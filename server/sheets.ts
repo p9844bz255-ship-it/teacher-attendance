@@ -329,13 +329,22 @@ export async function syncTeacherListFromFirestore(): Promise<Teacher[]> {
   try {
     console.log('STAS Sync: Initiating Google Sheets & Firestore hybrid synchronization...');
     
-    // 1. Fetch Master Data from Google Sheets
-    const sheetsTeachers = await syncTeacherListFromSheets();
-    
-    // 2. Fetch persistent state from Firestore
+    // 1. Fetch persistent state from Firestore (master_guru)
     const fsTeachers = await dbGetTeachers();
     
-    // 3. Merge both sources
+    // If real Firebase is connected and has Master Guru records, use them as absolute Single Source of Truth!
+    if (isRealFirebaseConnected && fsTeachers && fsTeachers.length > 0) {
+      console.log(`STAS Sync: Firestore master_guru holds ${fsTeachers.length} teachers. Using as Single Source of Truth.`);
+      cachedTeachers = fsTeachers;
+      updateMemoryTeachers(fsTeachers);
+      return cachedTeachers;
+    }
+    
+    // 2. Otherwise (offline or database is empty), load sheets/fallback to initialize
+    console.log('STAS Sync: Firestore master_guru is empty or offline. Initializing from Google Sheets or hardcoded defaults...');
+    const sheetsTeachers = await syncTeacherListFromSheets();
+    
+    // 3. Merge sources (overlay whatever is found in fsTeachers on top of sheets)
     const mergedMap = new Map<string, Teacher>();
     
     // First, populate with Google Sheets master teachers
@@ -351,13 +360,11 @@ export async function syncTeacherListFromFirestore(): Promise<Teacher[]> {
         const key = ft.id.toLowerCase().trim();
         const existing = mergedMap.get(key);
         if (existing) {
-          // Exist in both! Merge them: use sheets basic data but overlay system updates from Firestore
           mergedMap.set(key, {
             ...existing,
             ...ft
           });
         } else {
-          // Exists only in Firestore (CRUD added teachers)
           mergedMap.set(key, ft);
         }
       }

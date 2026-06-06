@@ -84,7 +84,7 @@
     }
   },
   "firestore": {
-    "teachers": {
+    "master_guru": {
       "schema": "Teacher",
       "description": "Master registry for STAS verified teachers and administration roles"
     },

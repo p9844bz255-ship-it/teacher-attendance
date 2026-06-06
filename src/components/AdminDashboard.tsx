@@ -72,6 +72,30 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
   const [printFilter, setPrintFilter] = useState<'all' | 'single'>('all');
   const [selectedPrintId, setSelectedPrintId] = useState('');
 
+  // Custom Confirmation Modal state
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText: string;
+    cancelText: string;
+    onConfirm: () => void;
+  } | null>(null);
+
+  const promptConfirm = (title: string, message: string, confirmText: string, onConfirm: () => void) => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      message,
+      confirmText,
+      cancelText: 'Batal',
+      onConfirm: () => {
+        onConfirm();
+        setConfirmModal(null);
+      }
+    });
+  };
+
   useEffect(() => {
     fetchDashboardData();
   }, [activeTab]);
@@ -128,36 +152,45 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
     e.preventDefault();
     setErrorLabel(null);
 
-    const payload = { id: tId, name: tName, commission: tCommission, role: tRole };
-    const endpoint = editingTeacherId ? `/api/teachers/${editingTeacherId}` : '/api/teachers';
-    const method = editingTeacherId ? 'PUT' : 'POST';
+    const executeSubmit = async () => {
+      const payload = { id: tId, name: tName, commission: tCommission, role: tRole };
+      const endpoint = editingTeacherId ? `/api/teachers/${editingTeacherId}` : '/api/teachers';
+      const method = editingTeacherId ? 'PUT' : 'POST';
 
-    try {
-      const res = await fetch(endpoint, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
+      try {
+        const res = await fetch(endpoint, {
+          method,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Terjadi hambatan penyimpanan.');
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Terjadi hambatan penyimpanan.');
+        }
+
+        // Reset form on success
+        setTId('');
+        setTName('');
+        setTCommission('');
+        setTRole('GURU');
+        setEditingTeacherId(null);
+        setShowTeacherForm(false);
+        fetchDashboardData();
+      } catch (err: any) {
+        setErrorLabel(err.message);
       }
+    };
 
-      // Reset form on success
-      setTId('');
-      setTName('');
-      setTCommission('');
-      setTRole('GURU');
-      setEditingTeacherId(null);
-      setShowTeacherForm(false);
-      fetchDashboardData();
-    } catch (err: any) {
-      setErrorLabel(err.message);
-    }
+    promptConfirm(
+      'Simpan Perubahan',
+      'Simpan perubahan data guru?',
+      'Simpan',
+      executeSubmit
+    );
   };
 
   const handleEditClick = (teacher: any) => {
@@ -170,64 +203,76 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
   };
 
   const handlePasswordReset = async (id: string, name: string) => {
-    if (!confirm(`Apakah Anda yakin ingin menyetel ulang kata sandi milik ${name} ke sandi default (ID Guru)?`)) return;
-    try {
-      const res = await fetch(`/api/teachers/${id}/reset-password`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        alert('Sandi berhasil dikembalikan ke default. Pengajar diwajibkan mengganti sandi saat login pertama.');
-        fetchDashboardData();
+    promptConfirm(
+      'Reset Password',
+      'Reset password guru ini?',
+      'Reset',
+      async () => {
+        try {
+          const res = await fetch(`/api/teachers/${id}/reset-password`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            alert('Sandi berhasil dikembalikan ke default. Pengajar diwajibkan mengganti sandi saat login pertama.');
+            fetchDashboardData();
+          }
+        } catch (err) {
+          console.error(err);
+        }
       }
-    } catch (err) {
-      console.error(err);
-    }
+    );
   };
 
-  const handleDeactivate = async (id: string, activeState: boolean) => {
-    if (!confirm(`Ubah status aktif guru ID ${id}?`)) return;
-    try {
-      const res = await fetch(`/api/teachers/${id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ isActive: !activeState })
-      });
-      if (res.ok) {
-        fetchDashboardData();
+  const handleDeleteClick = async (id: string, name: string) => {
+    promptConfirm(
+      'Hapus Guru',
+      'Yakin ustadz?',
+      'Hapus',
+      async () => {
+        try {
+          const res = await fetch(`/api/teachers/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (res.ok) {
+            fetchDashboardData();
+          } else {
+            const data = await res.json();
+            alert(data.error || 'Terjadi hambatan saat menghapus guru.');
+          }
+        } catch (err) {
+          console.error(err);
+        }
       }
-    } catch (err) {
-      console.error(err);
-    }
+    );
   };
 
   // Approval workspace triggers
   const handleCorrectionDecision = async (id: string, decision: 'APPROVED' | 'REJECTED') => {
-    const confirmation = confirm(`Apakah Anda yakin ingin ${decision === 'APPROVED' ? 'MENYETUJUI' : 'MENOLAK'} dispensasi absensi ini?`);
-    if (!confirmation) return;
-
-    try {
-      const res = await fetch(`/api/attendance/corrections/${id}/approve`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ decision })
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error);
+    const actionLabel = decision === 'APPROVED' ? 'MENYETUJUI' : 'MENOLAK';
+    promptConfirm(
+      'Konfirmasi Dispensasi',
+      `Apakah Anda yakin ingin ${actionLabel} dispensasi absensi ini?`,
+      'Konfirmasi',
+      async () => {
+        try {
+          const res = await fetch(`/api/attendance/corrections/${id}/approve`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ decision })
+          });
+          if (res.ok) {
+            fetchDashboardData();
+          }
+        } catch (err) {
+          console.error(err);
+        }
       }
-
-      fetchDashboardData();
-    } catch (err: any) {
-       alert(err.message);
-    }
+    );
   };
 
   // Generate Excel sheet simulation download
@@ -764,11 +809,9 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
                                 <Edit className="h-4 w-4" />
                               </button>
                               <button
-                                onClick={() => handleDeactivate(teacher.id, teacher.isActive)}
-                                className={`h-8 w-8 rounded-full inline-flex items-center justify-center transition-colors ${
-                                  teacher.isActive ? 'text-gray-405 hover:text-red-650 hover:bg-red-50' : 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50'
-                                }`}
-                                title={teacher.isActive ? 'Nonaktifkan Akun' : 'Aktifkan Akun'}
+                                onClick={() => handleDeleteClick(teacher.id, teacher.name)}
+                                className="h-8 w-8 rounded-full inline-flex items-center justify-center transition-colors text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                title="Hapus Guru"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </button>
@@ -1566,6 +1609,59 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
         })()}
 
       </main>
+
+      {/* 4. CUSTOM REUSABLE CONFIRMATION MODAL (Premium styled, spring scaled, responsive) */}
+      <AnimatePresence>
+        {confirmModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setConfirmModal(null)}
+              className="absolute inset-0 bg-black/45 backdrop-blur-sm"
+            />
+            {/* Modal Box */}
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ type: 'spring', duration: 0.4 }}
+              className="relative w-full max-w-sm bg-white rounded-[28px] p-6 shadow-[0_20px_50px_rgba(0,0,0,0.12)] border border-neutral-100 flex flex-col items-center text-center space-y-4"
+            >
+              {/* Optional dynamic icons based on confirmation action */}
+              <div className="h-12 w-12 rounded-full flex items-center justify-center bg-zinc-50 border border-zinc-100 text-zinc-800 shrink-0">
+                <ShieldAlert className="h-5 w-5" />
+              </div>
+              <div className="space-y-1.5 w-full">
+                <h4 className="text-base font-bold tracking-tight text-neutral-900 leading-snug">
+                  {confirmModal.title}
+                </h4>
+                <p className="text-xs text-neutral-500 leading-relaxed font-sans px-2">
+                  {confirmModal.message}
+                </p>
+              </div>
+              <div className="flex items-center space-x-3 w-full pt-1">
+                <button
+                  type="button"
+                  onClick={() => setConfirmModal(null)}
+                  className="flex-1 py-3 text-xs font-semibold bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded-full transition-colors cursor-pointer"
+                >
+                  {confirmModal.cancelText}
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmModal.onConfirm}
+                  className="flex-1 py-3 text-xs font-semibold bg-black hover:bg-neutral-900 text-white rounded-full transition-colors cursor-pointer"
+                >
+                  {confirmModal.confirmText}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

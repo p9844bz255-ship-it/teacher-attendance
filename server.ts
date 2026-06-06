@@ -115,8 +115,12 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   try {
-    // Sync teachers from source
-    const teachers = getCachedTeachers();
+    // Reload from master_guru in Firestore if cache is empty
+    let teachers = getCachedTeachers();
+    if (!teachers || teachers.length === 0) {
+      await syncTeacherListFromFirestore();
+      teachers = getCachedTeachers();
+    }
     const teacher = teachers.find((t) => t.id.toLowerCase() === id.toLowerCase().trim() && t.isActive);
 
     if (!teacher) {
