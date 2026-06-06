@@ -396,14 +396,8 @@ export enum OperationType {
   WRITE = 'write',
 }
 
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    operationType,
-    path
-  };
-  console.error('STAS Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+export function updateMemoryTeachers(list: Teacher[]): void {
+  memoryTeachers = [...list];
 }
 
 export async function dbGetTeachers(): Promise<Teacher[]> {
@@ -418,7 +412,7 @@ export async function dbGetTeachers(): Promise<Teacher[]> {
       });
       if (list.length > 0) return list;
     } catch (e) {
-      handleFirestoreError(e, OperationType.GET, path);
+      console.error('STAS Firebase Engine: Error reading teachers from Firestore. Fallback to memory.', e);
     }
   }
   return memoryTeachers;
@@ -430,11 +424,11 @@ export async function dbCreateTeacher(teacher: Teacher): Promise<void> {
     memoryTeachers.push(teacher);
   }
   if (isRealFirebaseConnected) {
-    const path = `teachers/${teacher.id}`;
     try {
       await setDoc(doc(db, 'teachers', teacher.id), teacher);
+      console.log("SAVED TO FIRESTORE:", teacher.id);
     } catch (e) {
-      handleFirestoreError(e, OperationType.WRITE, path);
+      console.error('STAS Firebase Engine: Error writing teacher to Firestore:', e);
     }
   }
 }
@@ -443,11 +437,11 @@ export async function dbUpdateTeacher(id: string, fields: Partial<Teacher>): Pro
   // Update local memory fallback
   memoryTeachers = memoryTeachers.map(t => t.id === id ? { ...t, ...fields } as Teacher : t);
   if (isRealFirebaseConnected) {
-    const path = `teachers/${id}`;
     try {
       await setDoc(doc(db, 'teachers', id), fields, { merge: true });
+      console.log("UPDATED IN FIRESTORE:", id);
     } catch (e) {
-      handleFirestoreError(e, OperationType.UPDATE, path);
+      console.error('STAS Firebase Engine: Error updating teacher in Firestore:', e);
     }
   }
 }
@@ -456,27 +450,27 @@ export async function dbDeleteTeacher(id: string): Promise<void> {
   // Update local memory fallback
   memoryTeachers = memoryTeachers.filter(t => t.id !== id);
   if (isRealFirebaseConnected) {
-    const path = `teachers/${id}`;
     try {
       await deleteDoc(doc(db, 'teachers', id));
+      console.log("DELETED FROM FIRESTORE:", id);
     } catch (e) {
-      handleFirestoreError(e, OperationType.DELETE, path);
+      console.error('STAS Firebase Engine: Error deleting teacher from Firestore:', e);
     }
   }
 }
 
 export async function dbResetTeacherPassword(id: string): Promise<string> {
-  const defaultHash = bcrypt.hashSync(id, 10);
+  const defaultHash = bcrypt.hashSync(id.toLowerCase().trim(), 10);
   const fields = { passwordHash: defaultHash, mustChangePassword: true };
 
   // Update local memory fallback
   memoryTeachers = memoryTeachers.map(t => t.id === id ? { ...t, ...fields } as Teacher : t);
   if (isRealFirebaseConnected) {
-    const path = `teachers/${id}`;
     try {
       await setDoc(doc(db, 'teachers', id), fields, { merge: true });
+      console.log("PASSWORD RESET IN FIRESTORE:", id);
     } catch (e) {
-      handleFirestoreError(e, OperationType.UPDATE, path);
+      console.error('STAS Firebase Engine: Error resetting password in Firestore:', e);
     }
   }
   return id;

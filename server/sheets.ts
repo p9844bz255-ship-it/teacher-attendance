@@ -1,6 +1,6 @@
 import { Teacher, AttendanceRecord } from '../src/types';
 import bcrypt from 'bcryptjs';
-import { dbGetTeachers, dbCreateTeacher, isRealFirebaseConnected } from './firebase';
+import { dbGetTeachers, dbCreateTeacher, isRealFirebaseConnected, updateMemoryTeachers } from './firebase';
 
 const SPREADSHEET_ID = '1QoSyFJDpXt9Hw4miiN3lEtuzCH3Y2NmpPt43gsGW6e0';
 
@@ -187,7 +187,13 @@ export async function syncTeacherListFromSheets(): Promise<Teacher[]> {
 
           // Clean password formatting: bcrypt vs plaintext check
           let passwordHash = '';
-          const cleanPw = rawPw || id; // Default to ID if empty
+          const cleanId = id.toLowerCase().trim();
+          let cleanPw = rawPw ? String(rawPw).trim() : cleanId;
+          
+          if (cleanPw.toLowerCase() === id.toLowerCase()) {
+            cleanPw = cleanId; // Always use lowercase ID as default password
+          }
+
           if (cleanPw.startsWith('$2a$') || cleanPw.startsWith('$2b$') || cleanPw.startsWith('$2y$')) {
             passwordHash = cleanPw;
           } else {
@@ -215,12 +221,13 @@ export async function syncTeacherListFromSheets(): Promise<Teacher[]> {
             commission: rawRoleOrCommission,
             qrValue: qrVal,
             isActive: true,
-            mustChangePassword: !rawPw || rawPw === id // Force password change if default/empty
+            mustChangePassword: !rawPw || rawPw.toLowerCase().trim() === id.toLowerCase().trim()
           };
         });
 
       if (fetchedTeachers.length > 0) {
         cachedTeachers = fetchedTeachers;
+        updateMemoryTeachers(fetchedTeachers);
         console.log(`Teachers loaded from Google Sheets: ${fetchedTeachers.length}`);
         return cachedTeachers;
       }
@@ -231,6 +238,7 @@ export async function syncTeacherListFromSheets(): Promise<Teacher[]> {
 
   // If both options failed or returned empty dataset, fall back to initial schema list
   cachedTeachers = [...INITIAL_TEACHERS];
+  updateMemoryTeachers(cachedTeachers);
   console.log('Fallback to INITIAL_TEACHERS');
   return cachedTeachers;
 }
@@ -293,22 +301,27 @@ export function getCachedTeachers(): Teacher[] {
 // Support Super Admin CRUD
 export function updateCachedTeachers(updatedList: Teacher[]) {
   cachedTeachers = updatedList;
+  updateMemoryTeachers(updatedList);
 }
 export function addTeacherToCache(teacher: Teacher) {
   if (!cachedTeachers.some(t => t.id === teacher.id)) {
     cachedTeachers.push(teacher);
+    updateMemoryTeachers(cachedTeachers);
   }
 }
 export function removeTeacherFromCache(id: string) {
   cachedTeachers = cachedTeachers.filter(t => t.id !== id);
+  updateMemoryTeachers(cachedTeachers);
 }
 export function updateTeacherInCache(id: string, fields: Partial<Teacher>) {
   cachedTeachers = cachedTeachers.map(t => t.id === id ? { ...t, ...fields } : t);
+  updateMemoryTeachers(cachedTeachers);
 }
 export function resetTeacherPasswordInCache(id: string): string {
   // Reset password to default ID Guru as instructed: ID Guru = Password Awal (forces shift password)
-  const defaultHash = bcrypt.hashSync(id, 10);
+  const defaultHash = bcrypt.hashSync(id.toLowerCase().trim(), 10);
   cachedTeachers = cachedTeachers.map(t => t.id === id ? { ...t, passwordHash: defaultHash, mustChangePassword: true } : t);
+  updateMemoryTeachers(cachedTeachers);
   return id;
 }
 
@@ -355,6 +368,7 @@ export async function syncTeacherListFromFirestore(): Promise<Teacher[]> {
     // 4. Update the active memory cache
     if (finalTeachers.length > 0) {
       cachedTeachers = finalTeachers;
+      updateMemoryTeachers(finalTeachers);
       console.log(`STAS Sync: Successfully merged sources. Active teacher registry contains ${cachedTeachers.length} entries.`);
       
       // 5. Seed newly discovered Google Sheets teachers to Firestore so everything stays persistently in sync
@@ -382,6 +396,7 @@ export async function syncTeacherListFromFirestore(): Promise<Teacher[]> {
     return cachedTeachers;
   } catch (error) {
     console.error('STAS Sync: syncTeacherListFromFirestore completely failed, falling back to cachedTeachers:', error);
+    updateMemoryTeachers(cachedTeachers);
     return cachedTeachers;
   }
 }

@@ -131,8 +131,13 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     const isMatch = bcrypt.compareSync(password, teacher.passwordHash);
+    console.log("LOGIN USER:", teacher.id);
+    console.log("PASSWORD INPUT:", password);
+    console.log("PASSWORD HASH:", teacher.passwordHash);
+    console.log("BCRYPT RESULT:", isMatch);
+
     if (!isMatch) {
-      await dbAddAuditLog({
+       await dbAddAuditLog({
         userId: teacher.id,
         action: 'LOGIN_FAILURE',
         description: `Percobaan masuk gagal untuk ${teacher.name} (${teacher.id}): Sandi salah.`,
@@ -143,7 +148,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     // Determine if user has default password (forces password change)
-    const isFirstLogin = password === teacher.id;
+    const isFirstLogin = password.toLowerCase().trim() === teacher.id.toLowerCase().trim();
 
     const token = jwt.sign(
       {
@@ -246,7 +251,7 @@ app.post('/api/teachers', verifyToken, async (req: any, res) => {
   }
 
   try {
-    const defaultPassword = id; // Default password = Employee ID
+    const defaultPassword = id.toLowerCase().trim(); // Default password = Employee ID (lowercase)
     const defaultHash = bcrypt.hashSync(defaultPassword, 10);
     const qrVal = generateQRValue(id);
 
@@ -260,6 +265,8 @@ app.post('/api/teachers', verifyToken, async (req: any, res) => {
       isActive: true,
       mustChangePassword: true
     };
+
+    console.log("NEW TEACHER CREATED:", newTeacher);
 
     // 1. Save permanently to Firestore
     await dbCreateTeacher(newTeacher);
