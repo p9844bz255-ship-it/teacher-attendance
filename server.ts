@@ -1,3 +1,12 @@
+import dotenv from 'dotenv';
+
+dotenv.config({
+  path: '.env.local'
+});
+
+console.log('JWT:', process.env.JWT_SECRET ? 'FOUND' : 'MISSING');
+console.log('FIREBASE:', process.env.NEXT_PUBLIC_FIREBASE_API_KEY ? 'FOUND' : 'MISSING');
+
 import express from 'express';
 import path from 'path';
 import crypto from 'crypto';

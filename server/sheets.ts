@@ -6,8 +6,18 @@ const SPREADSHEET_ID = '1QoSyFJDpXt9Hw4miiN3lEtuzCH3Y2NmpPt43gsGW6e0';
 // Default static master teachers list to guarantee pristine operations out-of-the-box
 const INITIAL_TEACHERS: Teacher[] = [
   {
-    id: 'SUPER001',
+    id: 'admin',
     name: 'Super Admin STAS',
+    passwordHash: bcrypt.hashSync('lessonplan', 10),
+    role: 'SUPER_ADMIN',
+    commission: 'Management',
+    qrValue: 'admin|SYSTEM_ADMIN_QR_SECRET_MD5',
+    isActive: true,
+    mustChangePassword: false
+  },
+  {
+    id: 'SUPER001',
+    name: 'Super Admin STAS Legacy',
     passwordHash: bcrypt.hashSync('SUPER001', 10),
     role: 'SUPER_ADMIN',
     commission: 'Direktorat Akademi',

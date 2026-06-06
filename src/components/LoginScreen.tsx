@@ -102,43 +102,44 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
   return (
     <div 
-      className="min-h-screen flex flex-col items-center justify-center p-6 bg-[#FFFFFF] text-[#111111] antialiased select-none font-sans"
-      style={{ backgroundImage: 'radial-gradient(circle at top, rgba(0,0,0,0.03), transparent 60%)' }}
+      className="min-h-screen flex flex-col items-center justify-center p-6 bg-zinc-50 text-[#111111] antialiased select-none font-sans"
+      style={{ backgroundImage: 'radial-gradient(circle at top, rgba(0,0,0,0.025), transparent 70%)' }}
     >
       <motion.div 
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -24 }}
-        transition={{ duration: 0.6, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
-        className="w-full max-w-[420px]"
+        transition={{ duration: 0.6, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+        className="w-full max-w-[430px]"
       >
         {/* Logo and Header Block */}
-        <div className="flex flex-col items-center mb-10 text-center">
+        <div className="flex flex-col items-center mb-9 text-center">
           <motion.img 
             initial={{ opacity: 0, scale: 0.92 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
             src="https://www.image2url.com/r2/default/images/1778032976429-fb84224a-3e08-4092-b38f-529e608a47d2.png" 
             alt="Al-Wildan Logo" 
-            className="h-[72px] w-[72px] object-contain mb-5 filter contrast-125 select-none pointer-events-none"
+            className="h-[80px] w-[80px] object-contain mb-5 select-none pointer-events-none"
             referrerPolicy="no-referrer"
           />
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
+            transition={{ duration: 0.5, delay: 0.15 }}
+            className="space-y-1.5"
           >
-            <h1 className="text-2xl font-bold tracking-tight text-[#111111]">
-              STAS Portal
+            <h1 className="text-2xl font-extrabold tracking-tight text-zinc-950 font-sans">
+              Teacher Attendance
             </h1>
-            <p className="text-[11px] font-mono tracking-widest uppercase text-gray-400 mt-1.5">
-              Al-Wildan Boarding School 3
+            <p className="text-[11px] font-bold tracking-wider uppercase text-zinc-400">
+              AL - WILDAN ISLAMIC SCHOOL 3 BSD CITY
             </p>
           </motion.div>
         </div>
 
-        {/* Clean Apple/Stripe-styled Card Container */}
-        <div className="bg-[#FFFFFF] border border-[#ECECEC] rounded-2xl p-8 shadow-[0_8px_30px_rgba(0,0,0,0.012)] relative overflow-hidden">
+        {/* Clean Premium Glassmorphic Card Container with Radius 28px */}
+        <div className="bg-white/90 backdrop-blur-md border border-zinc-100/80 rounded-[28px] p-8 md:p-9 shadow-[0_20px_50px_rgba(0,0,0,0.035)] relative overflow-hidden">
           
           <AnimatePresence mode="wait">
             {error && (
@@ -148,9 +149,9 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.2 }}
-                className="mb-6 p-4 bg-red-50 border border-red-100 text-red-700 text-xs rounded-xl flex items-start gap-2.5 font-medium leading-relaxed leading-5"
+                className="mb-6 p-4 bg-rose-50 border border-rose-100 text-rose-700 text-xs rounded-[20px] flex items-start gap-2.5 font-semibold leading-relaxed"
               >
-                <div className="h-1.5 w-1.5 bg-red-500 rounded-full mt-1.5 shrink-0" />
+                <div className="h-1.5 w-1.5 bg-rose-500 rounded-full mt-1.5 shrink-0" />
                 <span>{error}</span>
               </motion.div>
             )}
@@ -158,17 +159,17 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
           {!mustChange ? (
             <form onSubmit={handleInitialLogin} className="space-y-5">
-              {/* ID Guru Field (stagger Delay: 0.25s) */}
+              {/* ID Guru Field with Radius 20px */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.25, ease: "easeOut" }}
+                transition={{ duration: 0.4, delay: 0.2, ease: "easeOut" }}
               >
-                <label className="block text-[10px] font-mono uppercase tracking-wider text-gray-400 mb-1.5 font-medium">
+                <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
                   ID Guru
                 </label>
                 <div className="relative">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-400">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-zinc-400">
                     <Shield className="h-4 w-4 stroke-[1.5]" />
                   </span>
                   <input
@@ -177,22 +178,22 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                     value={id}
                     onChange={(e) => setId(e.target.value)}
                     placeholder="Contoh: alwildan3"
-                    className="w-full pl-10 pr-4 py-2.5 text-sm bg-[#F9F9F9] hover:bg-[#F5F5F5] focus:bg-white border border-[#EBEBEB] focus:border-[#B5B5B5] rounded-xl outline-none transition duration-150 ease-in-out font-sans placeholder-gray-400 text-[#111111] font-medium"
+                    className="w-full pl-11 pr-4 py-3 text-sm bg-zinc-50 hover:bg-zinc-100/70 focus:bg-white border border-zinc-100 rounded-[20px] focus:ring-2 focus:ring-black outline-none transition duration-150 ease-in-out font-sans placeholder-zinc-400 text-zinc-950 font-semibold"
                   />
                 </div>
               </motion.div>
 
-              {/* Password Field (stagger Delay: 0.35s) */}
+              {/* Password Field with Radius 20px */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.35, ease: "easeOut" }}
+                transition={{ duration: 0.4, delay: 0.3, ease: "easeOut" }}
               >
-                <label className="block text-[10px] font-mono uppercase tracking-wider text-gray-400 mb-1.5 font-medium">
+                <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
                   Kata Sandi
                 </label>
                 <div className="relative">
-                  <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-400">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-zinc-400">
                     <Key className="h-4 w-4 stroke-[1.5]" />
                   </span>
                   <input
@@ -201,23 +202,23 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full pl-10 pr-11 py-2.5 text-sm bg-[#F9F9F9] hover:bg-[#F5F5F5] focus:bg-white border border-[#EBEBEB] focus:border-[#B5B5B5] rounded-xl outline-none transition duration-150 ease-in-out font-sans placeholder-gray-400 text-[#111111] font-medium"
+                    className="w-full pl-11 pr-11 py-3 text-sm bg-zinc-50 hover:bg-zinc-100/70 focus:bg-white border border-zinc-100 rounded-[20px] focus:ring-2 focus:ring-black outline-none transition duration-150 ease-in-out font-sans placeholder-zinc-400 text-zinc-950 font-semibold"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-450 hover:text-gray-750 outline-none transition duration-100"
+                    className="absolute inset-y-0 right-0 pr-4 flex items-center text-zinc-400 hover:text-zinc-650 outline-none transition duration-100 cursor-pointer"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4 stroke-[1.5]" /> : <Eye className="h-4 w-4 stroke-[1.5]" />}
                   </button>
                 </div>
               </motion.div>
 
-              {/* Login Button (stagger Delay: 0.45s) */}
+              {/* Login Button with Radius 18px */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4, delay: 0.45, ease: "easeOut" }}
+                transition={{ duration: 0.4, delay: 0.4, ease: "easeOut" }}
               >
                 <motion.button
                   whileHover={{ y: -1 }}
@@ -225,11 +226,11 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                   transition={{ duration: 0.12 }}
                   type="submit"
                   disabled={loading}
-                  className="w-full mt-3 py-2.5 bg-[#000000] text-white text-xs uppercase tracking-widest font-mono font-medium rounded-xl hover:bg-[#1E1E1E] transition duration-150 disabled:bg-gray-400 cursor-pointer flex items-center justify-center space-x-2"
+                  className="w-full mt-3 py-3 bg-black text-white text-xs uppercase tracking-widest font-semibold rounded-[18px] hover:bg-zinc-900 transition duration-150 disabled:bg-zinc-300 cursor-pointer flex items-center justify-center space-x-2 shadow-sm"
                 >
                   {loading ? (
                     <>
-                      <div className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       <span>Menghubungkan...</span>
                     </>
                   ) : (
@@ -244,16 +245,16 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               animate={{ opacity: 1 }}
               className="space-y-5"
             >
-              <div className="bg-amber-50 border border-amber-100 p-4 rounded-xl mb-4 text-xs text-amber-805 leading-relaxed font-sans">
-                <p className="font-semibold text-amber-900 mb-1 block">Aktivasi Akun Pertama Kali</p>
+              <div className="bg-amber-50 border border-amber-100 p-4 rounded-[20px] mb-4 text-xs text-amber-805 leading-relaxed font-sans font-semibold">
+                <p className="font-bold text-amber-900 mb-1 block">Aktivasi Akun Pertama Kali</p>
                 Anda terdeteksi masuk menggunakan sandi bawaan. Demi standar keamanan, Anda wajib mengganti kata sandi sekarang.
               </div>
 
               {changeSuccess ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center">
                   <CheckCircle className="h-12 w-12 text-black mb-3 animate-bounce stroke-[1.5]" />
-                  <p className="text-sm font-bold text-[#111111]">Kata Sandi Diperbarui</p>
-                  <p className="text-xs text-gray-400 mt-1.5">Mengonfigurasi halaman utama Anda...</p>
+                  <p className="text-sm font-bold text-zinc-900">Kata Sandi Diperbarui</p>
+                  <p className="text-xs text-zinc-400 mt-1.5">Mengonfigurasi halaman utama Anda...</p>
                 </div>
               ) : (
                 <form onSubmit={handleChangePassword} className="space-y-4">
@@ -263,7 +264,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: 0.1, ease: "easeOut" }}
                   >
-                    <label className="block text-[10px] font-mono uppercase tracking-wider text-gray-450 mb-1.5 font-medium">
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
                       Kata Sandi Baru
                     </label>
                     <input
@@ -272,7 +273,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       placeholder="Minimal 4 karakter"
-                      className="w-full px-3.5 py-2.5 text-sm bg-[#F9F9F9] hover:bg-[#F5F5F5] focus:bg-white border border-[#EBEBEB] focus:border-[#B5B5B5] rounded-xl outline-none transition duration-150 text-[#111111] font-medium"
+                      className="w-full px-4 py-3 text-sm bg-zinc-50 hover:bg-zinc-100/70 focus:bg-white border border-zinc-100 rounded-[20px] focus:ring-2 focus:ring-black outline-none transition duration-150 text-zinc-950 font-semibold"
                     />
                   </motion.div>
 
@@ -282,7 +283,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: 0.2, ease: "easeOut" }}
                   >
-                    <label className="block text-[10px] font-mono uppercase tracking-wider text-gray-450 mb-1.5 font-medium">
+                    <label className="block text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
                       Konfirmasi Sandi Baru
                     </label>
                     <input
@@ -291,7 +292,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Ulangi sandi baru"
-                      className="w-full px-3.5 py-2.5 text-sm bg-[#F9F9F9] hover:bg-[#F5F5F5] focus:bg-white border border-[#EBEBEB] focus:border-[#B5B5B5] rounded-xl outline-none transition duration-150 text-[#111111] font-medium"
+                      className="w-full px-4 py-3 text-sm bg-zinc-50 hover:bg-zinc-100/70 focus:bg-white border border-zinc-100 rounded-[20px] focus:ring-2 focus:ring-black outline-none transition duration-150 text-zinc-950 font-semibold"
                     />
                   </motion.div>
 
@@ -307,11 +308,11 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                       transition={{ duration: 0.12 }}
                       type="submit"
                       disabled={loading}
-                      className="w-full mt-4 py-2.5 bg-black text-white text-xs uppercase tracking-widest font-mono font-medium rounded-xl hover:bg-[#1E1E1E] transition duration-150 disabled:bg-gray-400 cursor-pointer flex items-center justify-center space-x-2"
+                      className="w-full mt-4 py-3 bg-black text-white text-xs uppercase tracking-widest font-semibold rounded-[18px] hover:bg-zinc-900 transition duration-150 disabled:bg-zinc-300 cursor-pointer flex items-center justify-center space-x-2"
                     >
                       {loading ? (
                         <>
-                          <div className="h-3 w-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                           <span>Menyimpan...</span>
                         </>
                       ) : (
@@ -325,8 +326,8 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           )}
         </div>
 
-        <p className="text-center text-[10px] text-gray-400 mt-8 font-mono tracking-wide">
-          STAS Enterprise v1.2 • Al-Wildan Boarding School 3
+        <p className="text-center text-[10px] text-zinc-400 mt-8 font-semibold uppercase tracking-wider whitespace-nowrap">
+          STAS Enterprise • AL-WILDAN BOARDING SCHOOL 3
         </p>
       </motion.div>
     </div>
