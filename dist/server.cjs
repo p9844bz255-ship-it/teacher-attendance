@@ -402,7 +402,7 @@ function updateMemoryTeachers(list) {
 }
 async function dbGetTeachers() {
   if (isRealFirebaseConnected) {
-    const path2 = "teachers";
+    const path2 = "master_guru";
     try {
       const q = (0, import_firestore.collection)(db, path2);
       const snap = await (0, import_firestore.getDocs)(q);
@@ -423,7 +423,7 @@ async function dbCreateTeacher(teacher) {
   }
   if (isRealFirebaseConnected) {
     try {
-      await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, "teachers", teacher.id), teacher);
+      await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, "master_guru", teacher.id), teacher);
       console.log("SAVED TO FIRESTORE:", teacher.id);
     } catch (e) {
       console.error("STAS Firebase Engine: Error writing teacher to Firestore:", e);
@@ -434,7 +434,7 @@ async function dbUpdateTeacher(id, fields) {
   memoryTeachers = memoryTeachers.map((t) => t.id === id ? { ...t, ...fields } : t);
   if (isRealFirebaseConnected) {
     try {
-      await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, "teachers", id), fields, { merge: true });
+      await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, "master_guru", id), fields, { merge: true });
       console.log("UPDATED IN FIRESTORE:", id);
     } catch (e) {
       console.error("STAS Firebase Engine: Error updating teacher in Firestore:", e);
@@ -445,7 +445,7 @@ async function dbDeleteTeacher(id) {
   memoryTeachers = memoryTeachers.filter((t) => t.id !== id);
   if (isRealFirebaseConnected) {
     try {
-      await (0, import_firestore.deleteDoc)((0, import_firestore.doc)(db, "teachers", id));
+      await (0, import_firestore.deleteDoc)((0, import_firestore.doc)(db, "master_guru", id));
       console.log("DELETED FROM FIRESTORE:", id);
     } catch (e) {
       console.error("STAS Firebase Engine: Error deleting teacher from Firestore:", e);
@@ -458,7 +458,7 @@ async function dbResetTeacherPassword(id) {
   memoryTeachers = memoryTeachers.map((t) => t.id === id ? { ...t, ...fields } : t);
   if (isRealFirebaseConnected) {
     try {
-      await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, "teachers", id), fields, { merge: true });
+      await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, "master_guru", id), fields, { merge: true });
       console.log("PASSWORD RESET IN FIRESTORE:", id);
     } catch (e) {
       console.error("STAS Firebase Engine: Error resetting password in Firestore:", e);
@@ -1006,7 +1006,10 @@ app2.post("/api/auth/login", async (req, res) => {
       });
       return res.status(401).json({ error: "ID Guru tidak terdaftar atau dinonaktifkan." });
     }
-    const isMatch = import_bcryptjs3.default.compareSync(password, teacher.passwordHash);
+    let isMatch = import_bcryptjs3.default.compareSync(password, teacher.passwordHash);
+    if (!isMatch) {
+      isMatch = import_bcryptjs3.default.compareSync(password.toLowerCase().trim(), teacher.passwordHash);
+    }
     console.log("LOGIN USER:", teacher.id);
     console.log("PASSWORD INPUT:", password);
     console.log("PASSWORD HASH:", teacher.passwordHash);

@@ -130,7 +130,12 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'ID Guru tidak terdaftar atau dinonaktifkan.' });
     }
 
-    const isMatch = bcrypt.compareSync(password, teacher.passwordHash);
+    let isMatch = bcrypt.compareSync(password, teacher.passwordHash);
+    if (!isMatch) {
+      // Case-insensitive/trim fallback check (important for default ID-based passwords like T2026/tugas)
+      isMatch = bcrypt.compareSync(password.toLowerCase().trim(), teacher.passwordHash);
+    }
+
     console.log("LOGIN USER:", teacher.id);
     console.log("PASSWORD INPUT:", password);
     console.log("PASSWORD HASH:", teacher.passwordHash);

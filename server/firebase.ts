@@ -402,7 +402,7 @@ export function updateMemoryTeachers(list: Teacher[]): void {
 
 export async function dbGetTeachers(): Promise<Teacher[]> {
   if (isRealFirebaseConnected) {
-    const path = 'teachers';
+    const path = 'master_guru';
     try {
       const q = collection(db, path);
       const snap = await getDocs(q);
@@ -425,7 +425,7 @@ export async function dbCreateTeacher(teacher: Teacher): Promise<void> {
   }
   if (isRealFirebaseConnected) {
     try {
-      await setDoc(doc(db, 'teachers', teacher.id), teacher);
+      await setDoc(doc(db, 'master_guru', teacher.id), teacher);
       console.log("SAVED TO FIRESTORE:", teacher.id);
     } catch (e) {
       console.error('STAS Firebase Engine: Error writing teacher to Firestore:', e);
@@ -438,7 +438,7 @@ export async function dbUpdateTeacher(id: string, fields: Partial<Teacher>): Pro
   memoryTeachers = memoryTeachers.map(t => t.id === id ? { ...t, ...fields } as Teacher : t);
   if (isRealFirebaseConnected) {
     try {
-      await setDoc(doc(db, 'teachers', id), fields, { merge: true });
+      await setDoc(doc(db, 'master_guru', id), fields, { merge: true });
       console.log("UPDATED IN FIRESTORE:", id);
     } catch (e) {
       console.error('STAS Firebase Engine: Error updating teacher in Firestore:', e);
@@ -451,7 +451,7 @@ export async function dbDeleteTeacher(id: string): Promise<void> {
   memoryTeachers = memoryTeachers.filter(t => t.id !== id);
   if (isRealFirebaseConnected) {
     try {
-      await deleteDoc(doc(db, 'teachers', id));
+      await deleteDoc(doc(db, 'master_guru', id));
       console.log("DELETED FROM FIRESTORE:", id);
     } catch (e) {
       console.error('STAS Firebase Engine: Error deleting teacher from Firestore:', e);
@@ -467,7 +467,7 @@ export async function dbResetTeacherPassword(id: string): Promise<string> {
   memoryTeachers = memoryTeachers.map(t => t.id === id ? { ...t, ...fields } as Teacher : t);
   if (isRealFirebaseConnected) {
     try {
-      await setDoc(doc(db, 'teachers', id), fields, { merge: true });
+      await setDoc(doc(db, 'master_guru', id), fields, { merge: true });
       console.log("PASSWORD RESET IN FIRESTORE:", id);
     } catch (e) {
       console.error('STAS Firebase Engine: Error resetting password in Firestore:', e);
