@@ -1,5 +1,5 @@
 {
-  "name": "Teacher Attendance",
+  "name": "Teacher Attendance System",
   "description": "Teacher Attendance System for Al-Wildan Islamic School 3 BSD City",
   "requestFramePermissions": [
     "camera",
