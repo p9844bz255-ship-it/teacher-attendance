@@ -43,7 +43,7 @@ import { generateExecutiveAIInsight } from './server/gemini';
 import { Teacher, AttendanceRecord, AttendanceCorrection } from './src/types';
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'STAS_AL_WILDAN_SUPER_SECRET_KEY';
 const QR_SIGN_KEY = 'STAS_QR_BSD_SIGN_KEY';
 
