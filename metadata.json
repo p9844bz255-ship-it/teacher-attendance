@@ -1,6 +1,6 @@
 {
-  "name": "STAS",
-  "description": "Smart Teacher Attendance System for Al-Wildan Islamic School 3 BSD City",
+  "name": "Teacher Attendance",
+  "description": "Teacher Attendance System for Al-Wildan Islamic School 3 BSD City",
   "requestFramePermissions": [
     "camera",
     "geolocation"

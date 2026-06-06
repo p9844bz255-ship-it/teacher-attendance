@@ -235,7 +235,7 @@ export default function GuruDashboard({ user, token, onLogout }: GuruDashboardPr
 
       setCorrectionReason('');
       fetchCorrections();
-      alert('Pengajuan koreksi kehadiran berhasil dikirim ke Admin STAS Al-Wildan.');
+      alert('Pengajuan koreksi kehadiran berhasil dikirim ke Admin Al-Wildan.');
     } catch (err: any) {
        setErrorBanner(err.message);
     } finally {

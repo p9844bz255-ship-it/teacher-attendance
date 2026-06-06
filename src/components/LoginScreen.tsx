@@ -234,7 +234,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                       <span>Menghubungkan...</span>
                     </>
                   ) : (
-                    <span>Masuk Ke Sistem</span>
+                    <span>Masuk</span>
                   )}
                 </motion.button>
               </motion.div>
@@ -254,7 +254,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
                 <div className="flex flex-col items-center justify-center py-8 text-center">
                   <CheckCircle className="h-12 w-12 text-black mb-3 animate-bounce stroke-[1.5]" />
                   <p className="text-sm font-bold text-zinc-900">Kata Sandi Diperbarui</p>
-                  <p className="text-xs text-zinc-400 mt-1.5">Mengonfigurasi halaman utama Anda...</p>
+                  <p className="text-xs text-zinc-400 mt-1.5 font-medium">Lanjut masuk ke halaman utama...</p>
                 </div>
               ) : (
                 <form onSubmit={handleChangePassword} className="space-y-4">
@@ -327,7 +327,7 @@ export default function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         </div>
 
         <p className="text-center text-[10px] text-zinc-400 mt-8 font-semibold uppercase tracking-wider whitespace-nowrap">
-          STAS Enterprise • AL-WILDAN BOARDING SCHOOL 3
+          Teacher Attendance • AL-WILDAN BOARDING SCHOOL 3
         </p>
       </motion.div>
     </div>

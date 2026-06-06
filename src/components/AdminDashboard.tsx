@@ -4,7 +4,7 @@ import {
   Users, Check, X, Printer, ShieldCheck, ClipboardList, 
   Trash2, Plus, Edit, RefreshCw, Key, Download, FileText, ChevronRight,
   Search, LogIn, Activity, Lock, ShieldAlert, Sparkles, Database, Server,
-  ArrowUpRight, CheckCircle2, Calendar
+  ArrowUpRight, CheckCircle2, Calendar, Menu
 } from 'lucide-react';
 
 const AnimatedCounter = ({ value, duration = 800 }: { value: number; duration?: number }) => {
@@ -51,6 +51,7 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'monitor' | 'teachers' | 'corrections' | 'audits' | 'qrprint'>('monitor');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Audit filtering states
   const [searchQuery, setSearchQuery] = useState('');
@@ -240,7 +241,7 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `Laporan_Absensi_Realtime_STAS_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `Laporan_Absensi_Realtime_Teacher_Attendance_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -293,57 +294,171 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
             </div>
           ))}
         </div>
-      </div>
-
-      {/* Primary Executive Layout Header */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-10 px-8 py-4 flex items-center justify-between print:hidden">
-        <div className="flex items-center space-x-4">
+      </div>      {/* Primary Executive Layout Header */}
+      <header className="bg-white border-b border-gray-155 sticky top-0 z-40 px-4 sm:px-6 md:px-8 py-2.5 sm:py-4 flex items-center justify-between print:hidden h-14 sm:h-16 md:h-20">
+        <div className="flex items-center space-x-3 sm:space-x-4">
+          {/* Mobile hamburger menu trigger */}
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(true)}
+            className="md:hidden p-2 hover:bg-slate-100 rounded-full text-slate-600 transition outline-none cursor-pointer"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          
           <img 
             src="https://www.image2url.com/r2/default/images/1778032976429-fb84224a-3e08-4092-b38f-529e608a47d2.png" 
             alt="School Logo" 
-            className="h-10 w-10 object-contain filter contrast-125"
+            className="h-8 w-8 sm:h-10 sm:w-10 object-contain filter contrast-125 select-none"
             referrerPolicy="no-referrer"
           />
           <div>
-            <h1 className="text-base font-bold tracking-tight text-gray-900 flex items-center space-x-2">
-              <span>Smart Admin Space</span>
-              <span className="text-[10px] bg-black text-white px-2.5 py-0.5 rounded-full font-semibold">
+            <h1 className="text-sm sm:text-base font-bold tracking-tight text-gray-950 flex items-center space-x-1.5 leading-none">
+              <span className="truncate max-w-[120px] sm:max-w-none">Teacher Attendance</span>
+              <span className="text-[9px] sm:text-[10px] bg-black text-white px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shrink-0">
                 {user.role.replace('_',' ')}
               </span>
             </h1>
-            <p className="text-xs text-gray-400 mt-0.5">AL - WILDAN BOARDING SCHOOL 3 BSD CITY</p>
+            <p className="text-[9px] sm:text-xs text-gray-400 mt-0.5 truncate hidden sm:block">AL - WILDAN BOARDING SCHOOL 3 BSD CITY</p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-3 sm:space-x-4">
           <button 
             type="button"
             onClick={fetchDashboardData}
-            className="p-2 hover:bg-slate-50 border border-black/[0.02] rounded-full text-slate-600 transition"
+            className="p-1.5 sm:p-2 hover:bg-slate-50 border border-black/[0.02] rounded-full text-slate-600 transition outline-none cursor-pointer"
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </button>
-          <div className="text-right">
+          <div className="text-right hidden md:block">
             <p className="text-xs font-bold leading-none">{user.name}</p>
             <span className="text-[10px] text-gray-400 mt-0.5 block">@{user.id}</span>
           </div>
           <button 
             onClick={onLogout}
-            className="text-xs font-medium bg-[#F3F4F6] hover:bg-neutral-200 text-[#111111] px-4 py-2 rounded-full transition cursor-pointer"
+            className="text-xs font-semibold bg-[#F3F4F6] hover:bg-neutral-200 text-[#111111] px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full cursor-pointer transition shrink-0"
           >
             Keluar
           </button>
         </div>
       </header>
 
+      {/* Mobile Drawer Navigation Sidebar */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <div className="relative z-50 md:hidden" key="mobile-drawer-root">
+            {/* Backdrop overlay */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMobileMenuOpen(false)}
+              className="fixed inset-0 bg-neutral-950/40 backdrop-blur-sm"
+            />
+            
+            {/* Drawer sheet container */}
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+              className="fixed inset-y-0 left-0 w-72 bg-white shadow-2xl p-5 flex flex-col justify-between border-r border-gray-100"
+            >
+              <div className="space-y-6">
+                <div className="flex items-center justify-between pb-4 border-b border-gray-100">
+                  <div className="flex items-center space-x-2.5">
+                    <img 
+                      src="https://www.image2url.com/r2/default/images/1778032976429-fb84224a-3e08-4092-b38f-529e608a47d2.png" 
+                      alt="Logo" 
+                      className="h-8 w-8 object-contain"
+                    />
+                    <span className="font-bold text-sm tracking-tight">Teacher Attendance</span>
+                  </div>
+                  <button
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="p-1.5 hover:bg-slate-100 rounded-full text-slate-500 transition cursor-pointer"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {/* Profile panel inside Drawer */}
+                <div className="bg-slate-50 p-3 rounded-2xl flex items-center space-x-3 border border-slate-100">
+                  <div className="h-9 w-9 rounded-full bg-black flex items-center justify-center font-bold text-white text-xs">
+                    {user.name.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="truncate flex-1">
+                    <h4 className="text-xs font-bold leading-tight text-gray-950 truncate">{user.name}</h4>
+                    <span className="text-[10px] text-gray-400 mt-0.5 block truncate">@{user.id}</span>
+                  </div>
+                </div>
+
+                {/* Navigation links inside Drawer */}
+                <div className="flex flex-col space-y-1 pt-2">
+                  <button
+                    onClick={() => { setActiveTab('monitor'); setMobileMenuOpen(false); }}
+                    className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                      activeTab === 'monitor' ? 'bg-black text-white' : 'text-gray-500 hover:text-black hover:bg-slate-50'
+                    }`}
+                  >
+                    Realtime Feed
+                  </button>
+                  <button
+                    onClick={() => { setActiveTab('teachers'); setMobileMenuOpen(false); }}
+                    className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                      activeTab === 'teachers' ? 'bg-black text-white' : 'text-gray-500 hover:text-black hover:bg-slate-50'
+                    }`}
+                  >
+                    Manajemen Guru
+                  </button>
+                  <button
+                    onClick={() => { setActiveTab('corrections'); setMobileMenuOpen(false); }}
+                    className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                      activeTab === 'corrections' ? 'bg-black text-white' : 'text-gray-500 hover:text-black hover:bg-slate-50'
+                    }`}
+                  >
+                    Koreksi ({corrections.filter(c => c.status === 'PENDING').length})
+                  </button>
+                  <button
+                    onClick={() => { setActiveTab('qrprint'); setMobileMenuOpen(false); }}
+                    className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                      activeTab === 'qrprint' ? 'bg-black text-white' : 'text-gray-500 hover:text-black hover:bg-slate-50'
+                    }`}
+                  >
+                    Cetak Kartu QR
+                  </button>
+                  <button
+                    onClick={() => { setActiveTab('audits'); setMobileMenuOpen(false); }}
+                    className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold transition cursor-pointer ${
+                      activeTab === 'audits' ? 'bg-black text-white' : 'text-gray-500 hover:text-black hover:bg-slate-50'
+                    }`}
+                  >
+                    Sistem Audit
+                  </button>
+                </div>
+              </div>
+
+              {/* Logout button in Drawer Footer */}
+              <button
+                onClick={() => { setMobileMenuOpen(false); onLogout(); }}
+                className="w-full py-3 bg-red-50 hover:bg-red-100 text-red-700 font-bold tracking-wide text-xs rounded-xl transition text-center uppercase cursor-pointer"
+              >
+                Keluar Sesi
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Main Container body */}
-      <main className="max-w-7xl mx-auto w-full px-8 py-8 flex flex-col space-y-8 flex-1 print:hidden">
+      <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 md:px-8 py-5 md:py-8 flex flex-col space-y-6 md:space-y-8 flex-1 print:hidden">
         
         {/* Navigation Workspace Menu Tabs (Apple Segmented Control Inspired) */}
-        <div className="flex bg-[#F3F4F6] p-1 rounded-[22px] max-w-fit select-none">
+        <div className="hidden md:flex bg-[#F3F4F6] p-1 rounded-[22px] max-w-fit select-none">
           <button 
             onClick={() => setActiveTab('monitor')}
-            className={`px-5 py-2.5 text-xs font-semibold rounded-[18px] transition ${
+            className={`px-5 py-2.5 text-xs font-semibold rounded-[18px] transition cursor-pointer ${
               activeTab === 'monitor' ? 'bg-black text-white' : 'text-gray-500 hover:text-black'
             }`}
           >
@@ -351,7 +466,7 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
           </button>
           <button 
             onClick={() => setActiveTab('teachers')}
-            className={`px-5 py-2.5 text-xs font-semibold rounded-[18px] transition ${
+            className={`px-5 py-2.5 text-xs font-semibold rounded-[18px] transition cursor-pointer ${
               activeTab === 'teachers' ? 'bg-black text-white' : 'text-gray-500 hover:text-black'
             }`}
           >
@@ -359,7 +474,7 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
           </button>
           <button 
             onClick={() => setActiveTab('corrections')}
-            className={`px-5 py-2.5 text-xs font-semibold rounded-[18px] transition ${
+            className={`px-5 py-2.5 text-xs font-semibold rounded-[18px] transition cursor-pointer ${
               activeTab === 'corrections' ? 'bg-black text-white' : 'text-gray-500 hover:text-black'
             }`}
           >
@@ -367,7 +482,7 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
           </button>
           <button 
             onClick={() => setActiveTab('qrprint')}
-            className={`px-5 py-2.5 text-xs font-semibold rounded-[18px] transition ${
+            className={`px-5 py-2.5 text-xs font-semibold rounded-[18px] transition cursor-pointer ${
               activeTab === 'qrprint' ? 'bg-black text-white' : 'text-gray-500 hover:text-black'
             }`}
           >
@@ -375,7 +490,7 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
           </button>
           <button 
             onClick={() => setActiveTab('audits')}
-            className={`px-5 py-2.5 text-xs font-semibold rounded-[18px] transition ${
+            className={`px-5 py-2.5 text-xs font-semibold rounded-[18px] transition cursor-pointer ${
               activeTab === 'audits' ? 'bg-black text-white' : 'text-gray-500 hover:text-black'
             }`}
           >
@@ -387,7 +502,7 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
         {activeTab === 'monitor' && (
           <div className="space-y-8">
             {/* KPI Cards Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-6 gap-5">
               <div className="bg-white rounded-[24px] p-6 shadow-[0_8px_30px_rgba(0,0,0,0.02)] border border-black/[0.015]">
                 <span className="text-[10px] text-gray-400 uppercase tracking-wider font-semibold block font-sans">Total Guru</span>
                 <p className="text-3xl font-bold tracking-tight text-gray-900 mt-1">{summary?.stats?.totalTeachers || 0}</p>
@@ -910,7 +1025,7 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
               list.push({
                 type: 'warning',
                 title: 'Mutasi Sesi Alamat IP',
-                message: `Admin terdeteksi login dari ${loginIps.size} alamat IP yang berbeda. Amankan akun STAS Anda.`
+                message: `Admin terdeteksi login dari ${loginIps.size} alamat IP yang berbeda. Amankan akun Anda.`
               });
             }
 

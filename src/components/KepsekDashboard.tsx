@@ -48,47 +48,47 @@ export default function KepsekDashboard({ user, token, onLogout }: KepsekDashboa
     <div className="min-h-screen bg-[#FCFCFC] text-slate-900 font-sans antialiased pb-16">
       
       {/* Executive Header (Linear Style) */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-10 px-8 py-5 flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+      <header className="bg-white border-b border-gray-105 sticky top-0 z-10 px-4 sm:px-6 md:px-8 py-2.5 sm:py-4 flex items-center justify-between h-14 sm:h-16 md:h-20">
+        <div className="flex items-center space-x-3 sm:space-x-4">
           <img 
             src="https://www.image2url.com/r2/default/images/1778032976429-fb84224a-3e08-4092-b38f-529e608a47d2.png" 
             alt="School Logo" 
-            className="h-10 w-10 object-contain filter contrast-125"
+            className="h-8 w-8 sm:h-10 sm:w-10 object-contain filter contrast-125 select-none"
             referrerPolicy="no-referrer"
           />
           <div>
-            <h1 className="text-base font-bold tracking-tight text-gray-900 flex items-center space-x-2">
-              <span>Executive Portal</span>
-              <span className="text-[10px] bg-black text-white px-2.5 py-0.5 rounded-full font-semibold">
+            <h1 className="text-sm sm:text-base font-bold tracking-tight text-gray-900 flex items-center space-x-1.5 leading-none">
+              <span className="truncate max-w-[120px] sm:max-w-none">Executive Portal</span>
+              <span className="text-[9px] sm:text-[10px] bg-black text-white px-2 py-0.5 rounded-full font-bold uppercase shrink-0">
                 Kepala Sekolah
               </span>
             </h1>
-            <p className="text-xs text-slate-400 mt-0.5 font-sans">AL - WILDAN BOARDING SCHOOL 3 BSD CITY</p>
+            <p className="text-[9px] sm:text-xs text-slate-400 mt-0.5 font-sans truncate hidden sm:block">AL - WILDAN BOARDING SCHOOL 3 BSD CITY</p>
           </div>
         </div>
 
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-3 sm:space-x-4">
           <button 
             onClick={fetchExecutiveSummary}
             disabled={loading}
-            className="p-2 hover:bg-slate-50 border border-black/[0.02] rounded-full text-slate-600 transition cursor-pointer"
+            className="p-1.5 sm:p-2 hover:bg-slate-50 border border-black/[0.02] rounded-full text-slate-600 transition cursor-pointer shrink-0 outline-none"
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
-          <div className="text-right">
+          <div className="text-right hidden sm:block">
             <p className="text-xs font-bold leading-none">{user.name}</p>
             <span className="text-[10px] text-slate-400 mt-0.5 block">@{user.id}</span>
           </div>
           <button 
             onClick={onLogout}
-            className="text-xs font-semibold bg-[#F3F4F6] hover:bg-neutral-200 text-[#111111] px-4.5 py-2 rounded-full cursor-pointer transition"
+            className="text-xs font-semibold bg-[#F3F4F6] hover:bg-neutral-200 text-[#111111] px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full cursor-pointer transition shrink-0"
           >
             Keluar
           </button>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-8 py-8 space-y-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-5 md:py-8 space-y-6 md:space-y-8">
         
         {/* EXECUTIVE GEMINI-POWERED COGNITIVE INSIGHTS (Notion/Linear style glass block) */}
         <div className="bg-[#111111] text-white p-8 rounded-[32px] border border-zinc-800 shadow-xl relative overflow-hidden">

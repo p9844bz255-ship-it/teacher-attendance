@@ -65,7 +65,7 @@ export default function App() {
           className="h-8 w-8 border-2 border-black border-t-transparent rounded-full"
         />
         <p className="text-[10px] font-mono tracking-widest uppercase text-gray-400 mt-4">
-          STAS Security Verifier...
+          Attendance Security Verifier...
         </p>
       </div>
     );
