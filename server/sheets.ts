@@ -1,5 +1,6 @@
 import { Teacher, AttendanceRecord } from '../src/types';
 import bcrypt from 'bcryptjs';
+import { dbGetTeachers, dbCreateTeacher, isRealFirebaseConnected } from './firebase';
 
 const SPREADSHEET_ID = '1QoSyFJDpXt9Hw4miiN3lEtuzCH3Y2NmpPt43gsGW6e0';
 
@@ -306,4 +307,41 @@ export function resetTeacherPasswordInCache(id: string): string {
   const defaultHash = bcrypt.hashSync(id, 10);
   cachedTeachers = cachedTeachers.map(t => t.id === id ? { ...t, passwordHash: defaultHash, mustChangePassword: true } : t);
   return id;
+}
+
+export async function syncTeacherListFromFirestore(): Promise<Teacher[]> {
+  try {
+    // 1. Try fetching from Firestore/Database first
+    const fsTeachers = await dbGetTeachers();
+
+    // We check if we got a list and we are running with real Firestore connection
+    if (isRealFirebaseConnected && fsTeachers && fsTeachers.length > 0) {
+      cachedTeachers = fsTeachers;
+      console.log(`STAS sync: Loaded ${fsTeachers.length} teachers from real Firestore Database.`);
+      return cachedTeachers;
+    }
+
+    // 2. Fetch from Google Sheets if firestore returns empty or not connected
+    console.log('STAS sync: Firestore empty or disconnected. Pulling fresh master list from Google Sheets...');
+    const sheetsTeachers = await syncTeacherListFromSheets();
+
+    // 3. Seed to Firestore if real Firestore is active and got records from sheets
+    if (isRealFirebaseConnected && sheetsTeachers && sheetsTeachers.length > 0) {
+      cachedTeachers = sheetsTeachers;
+      try {
+        console.log('STAS sync: Seeding Firestore with Google Sheets teacher list...');
+        for (const t of sheetsTeachers) {
+          // Seeding document to Firestore safely
+          await dbCreateTeacher(t);
+        }
+      } catch (err) {
+        console.error('STAS sync: Seeding Firestore failed:', err);
+      }
+    }
+
+    return cachedTeachers;
+  } catch (error) {
+    console.error('STAS: syncTeacherListFromFirestore completely failed, falling back to cachedTeachers:', error);
+    return cachedTeachers;
+  }
 }

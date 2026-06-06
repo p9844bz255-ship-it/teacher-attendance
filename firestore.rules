@@ -77,5 +77,23 @@ service cloud.firestore {
       allow create: if isSignedIn();
       allow update, delete: if false; // Immutable audit logs
     }
+
+    // 5. Teachers Collection Rules
+    match /teachers/{teacherId} {
+      allow get: if isSignedIn() && (
+        request.auth.uid == teacherId || 
+        request.auth.token.role == 'ADMIN' || 
+        request.auth.token.role == 'SUPER_ADMIN' ||
+        request.auth.token.role == 'KEPALA_SEKOLAH'
+      );
+      allow list: if isSignedIn() && (
+        request.auth.token.role == 'ADMIN' || 
+        request.auth.token.role == 'SUPER_ADMIN' ||
+        request.auth.token.role == 'KEPALA_SEKOLAH'
+      );
+      allow create, update, delete: if isSignedIn() && (
+        request.auth.token.role == 'SUPER_ADMIN'
+      );
+    }
   }
 }

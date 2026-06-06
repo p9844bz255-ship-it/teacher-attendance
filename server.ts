@@ -1,12 +1,3 @@
-import dotenv from 'dotenv';
-
-dotenv.config({
-  path: '.env.local'
-});
-
-console.log('JWT:', process.env.JWT_SECRET ? 'FOUND' : 'MISSING');
-console.log('FIREBASE:', process.env.NEXT_PUBLIC_FIREBASE_API_KEY ? 'FOUND' : 'MISSING');
-
 import express from 'express';
 import path from 'path';
 import crypto from 'crypto';
@@ -16,6 +7,7 @@ import { createServer as createViteServer } from 'vite';
 
 import {
   syncTeacherListFromSheets,
+  syncTeacherListFromFirestore,
   getCachedTeachers,
   updateCachedTeachers,
   addTeacherToCache,
@@ -34,6 +26,10 @@ import {
   dbUpdateCorrection,
   dbAddAuditLog,
   dbGetAuditLogs,
+  dbCreateTeacher,
+  dbUpdateTeacher,
+  dbDeleteTeacher,
+  dbResetTeacherPassword,
   clientFirebaseConfig,
   isRealFirebaseConnected
 } from './server/firebase';
@@ -91,8 +87,8 @@ const verifyToken = (req: any, res: express.Response, next: express.NextFunction
   }
 };
 
-// Seed teachers on startup from sheets/local
-syncTeacherListFromSheets();
+// Seed teachers on startup from Firestore / Sheets fallback
+syncTeacherListFromFirestore();
 
 // ==========================================
 // API ENDPOINTS
@@ -124,11 +120,25 @@ app.post('/api/auth/login', async (req, res) => {
     const teacher = teachers.find((t) => t.id.toLowerCase() === id.toLowerCase().trim() && t.isActive);
 
     if (!teacher) {
+      await dbAddAuditLog({
+        userId: id.trim(),
+        action: 'LOGIN_FAILURE',
+        description: `Percobaan masuk gagal: ID "${id}" tidak terdaftar atau dinonaktifkan.`,
+        timestamp: new Date().toISOString(),
+        ipAddress: getClientIp(req)
+      });
       return res.status(401).json({ error: 'ID Guru tidak terdaftar atau dinonaktifkan.' });
     }
 
     const isMatch = bcrypt.compareSync(password, teacher.passwordHash);
     if (!isMatch) {
+      await dbAddAuditLog({
+        userId: teacher.id,
+        action: 'LOGIN_FAILURE',
+        description: `Percobaan masuk gagal untuk ${teacher.name} (${teacher.id}): Sandi salah.`,
+        timestamp: new Date().toISOString(),
+        ipAddress: getClientIp(req)
+      });
       return res.status(401).json({ error: 'Sandi salah. Silakan coba kembali.' });
     }
 
@@ -179,6 +189,7 @@ app.post('/api/auth/change-password', verifyToken, async (req: any, res) => {
 
   try {
     const hashed = bcrypt.hashSync(newPassword, 10);
+    await dbUpdateTeacher(req.user.id, { passwordHash: hashed, mustChangePassword: false });
     updateTeacherInCache(req.user.id, { passwordHash: hashed, mustChangePassword: false });
 
     await dbAddAuditLog({
@@ -250,8 +261,13 @@ app.post('/api/teachers', verifyToken, async (req: any, res) => {
       mustChangePassword: true
     };
 
+    // 1. Save permanently to Firestore
+    await dbCreateTeacher(newTeacher);
+
+    // 2. Update local cache
     addTeacherToCache(newTeacher);
 
+    // 3. Write audit log
     await dbAddAuditLog({
       userId: req.user.id,
       action: 'CRUD_CREATE',
@@ -273,17 +289,66 @@ app.put('/api/teachers/:id', verifyToken, async (req: any, res) => {
 
   const { name, commission, role, isActive } = req.body;
   try {
-    updateTeacherInCache(req.params.id, { name, commission, role, isActive });
+    const id = req.params.id;
+    const teachersList = getCachedTeachers();
+    const existingTeacher = teachersList.find(t => t.id === id);
 
+    let actionStr = 'CRUD_UPDATE';
+    let descStr = `Super Admin memperbarui guru ID ${id}`;
+
+    if (existingTeacher && isActive !== undefined && existingTeacher.isActive !== isActive) {
+      actionStr = isActive ? 'TEACHER_ACTIVATE' : 'TEACHER_DEACTIVATE';
+      descStr = `Super Admin ${isActive ? 'mengaktifkan' : 'menonaktifkan'} guru: ${existingTeacher.name} (${id})`;
+    }
+
+    // 1. Update Firestore permanently
+    await dbUpdateTeacher(id, { name, commission, role, isActive });
+
+    // 2. Update cache
+    updateTeacherInCache(id, { name, commission, role, isActive });
+
+    // 3. Audit Log
     await dbAddAuditLog({
       userId: req.user.id,
-      action: 'CRUD_UPDATE',
-      description: `Super Admin memperbarui guru ID ${req.params.id}`,
+      action: actionStr,
+      description: descStr,
       timestamp: new Date().toISOString(),
       ipAddress: getClientIp(req)
     });
 
     res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/teachers/:id', verifyToken, async (req: any, res) => {
+  if (req.user.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({ error: 'Hak cipta CRUD hanya dimiliki oleh Super Admin.' });
+  }
+
+  try {
+    const id = req.params.id;
+    const teachersList = getCachedTeachers();
+    const existingTeacher = teachersList.find(t => t.id === id);
+    const teacherName = existingTeacher ? existingTeacher.name : id;
+
+    // 1. Delete Firestore permanently
+    await dbDeleteTeacher(id);
+
+    // 2. Update cache
+    removeTeacherFromCache(id);
+
+    // 3. Audit Log
+    await dbAddAuditLog({
+      userId: req.user.id,
+      action: 'CRUD_DELETE',
+      description: `Super Admin menghapus guru: ${teacherName} (${id})`,
+      timestamp: new Date().toISOString(),
+      ipAddress: getClientIp(req)
+    });
+
+    res.json({ success: true, message: 'Teacher deleted successfully.' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -295,12 +360,19 @@ app.post('/api/teachers/:id/reset-password', verifyToken, async (req: any, res) 
   }
 
   try {
-    resetTeacherPasswordInCache(req.params.id);
+    const id = req.params.id;
 
+    // 1. Reset password in Firestore permanently
+    await dbResetTeacherPassword(id);
+
+    // 2. Reset in cache
+    resetTeacherPasswordInCache(id);
+
+    // 3. Audit Log
     await dbAddAuditLog({
       userId: req.user.id,
       action: 'RESET_PASSWORD',
-      description: `Melakukan reset sandi untuk Guru ID ${req.params.id}. Kembali ke kata sandi awal (ID Guru).`,
+      description: `Melakukan reset sandi untuk Guru ID ${id}. Kembali ke kata sandi awal (ID Guru).`,
       timestamp: new Date().toISOString(),
       ipAddress: getClientIp(req)
     });

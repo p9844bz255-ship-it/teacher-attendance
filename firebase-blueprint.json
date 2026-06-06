@@ -64,9 +64,30 @@
         "tanggal_full": { "type": "string" }
       },
       "required": ["bulan", "kegiatan", "kegiatan_lower", "tanggal", "tanggal_full"]
+    },
+    "Teacher": {
+      "title": "Teacher",
+      "description": "Stores teacher master records, authentication and metadata.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "passwordHash": { "type": "string" },
+        "role": { "type": "string" },
+        "commission": { "type": "string" },
+        "qrValue": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "mustChangePassword": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "passwordHash", "role", "commission", "qrValue", "isActive", "mustChangePassword", "createdAt"]
     }
   },
   "firestore": {
+    "teachers": {
+      "schema": "Teacher",
+      "description": "Master registry for STAS verified teachers and administration roles"
+    },
     "attendance": {
       "schema": "Attendance",
       "description": "Realtime teacher attendance collection"

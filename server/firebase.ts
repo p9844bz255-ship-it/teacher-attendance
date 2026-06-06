@@ -1,7 +1,8 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, getDocs, doc, setDoc, query, orderBy, limit } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, getDocs, doc, setDoc, deleteDoc, query, orderBy, limit } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import { CalendarEvent, AttendanceRecord, AttendanceCorrection, AuditLog } from '../src/types';
+import bcrypt from 'bcryptjs';
+import { CalendarEvent, AttendanceRecord, AttendanceCorrection, AuditLog, Teacher } from '../src/types';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY,
@@ -190,10 +191,84 @@ const INITIAL_AUDITS: AuditLog[] = [
 ];
 
 // Fallback in-memory database instances
+const INITIAL_TEACHERS: Teacher[] = [
+  {
+    id: 'admin',
+    name: 'Super Admin STAS',
+    passwordHash: bcrypt.hashSync('lessonplan', 10),
+    role: 'SUPER_ADMIN',
+    commission: 'Management',
+    qrValue: 'admin|SYSTEM_ADMIN_QR_SECRET_MD5',
+    isActive: true,
+    mustChangePassword: false
+  },
+  {
+    id: 'SUPER001',
+    name: 'Super Admin STAS Legacy',
+    passwordHash: bcrypt.hashSync('SUPER001', 10),
+    role: 'SUPER_ADMIN',
+    commission: 'Direktorat Akademi',
+    qrValue: 'SUPER001|SYSTEM_ADMIN_QR_SECRET_MD5',
+    isActive: true,
+    mustChangePassword: true
+  },
+  {
+    id: 'ADM001',
+    name: 'Admin Al-Wildan BSD',
+    passwordHash: bcrypt.hashSync('ADM001', 10),
+    role: 'ADMIN',
+    commission: 'Humas & Kesiswaan',
+    qrValue: 'ADM001|SYSTEM_WRITER_QR_SECRET_MD5',
+    isActive: true,
+    mustChangePassword: true
+  },
+  {
+    id: 'KEP001',
+    name: 'H. Abdul Hakim, Lc., M.A.',
+    passwordHash: bcrypt.hashSync('KEP001', 10),
+    role: 'KEPALA_SEKOLAH',
+    commission: 'Kepala Sekolah',
+    qrValue: 'KEP001|KEPALA_SEKOLAH_QR_SECRET',
+    isActive: true,
+    mustChangePassword: true
+  },
+  {
+    id: 'EMP001',
+    name: 'Ust. Ahmad Fauzi, S.Pd.I',
+    passwordHash: bcrypt.hashSync('EMP001', 10),
+    role: 'GURU',
+    commission: 'Komisi I (Al Qur\'an & Hadits)',
+    qrValue: 'EMP001|7f4c28b4d8d17b8f36118d3d661413159ad9e1bb9356ce0839e1ffba4be4ecbc',
+    isActive: true,
+    mustChangePassword: true
+  },
+  {
+    id: 'EMP002',
+    name: 'Ustd. Sarah Amelia, S.S.',
+    passwordHash: bcrypt.hashSync('EMP002', 10),
+    role: 'GURU',
+    commission: 'Komisi II (Bahasa Arab & Inggris)',
+    qrValue: 'EMP002|5d3a21b876a3e6f7902d1f1bc2dca0ef17b8f36159ad9e1bb9356ce0839e1ffba',
+    isActive: true,
+    mustChangePassword: true
+  },
+  {
+    id: 'EMP003',
+    name: 'Ust. Ridwan Hakim, M.Pd.',
+    passwordHash: bcrypt.hashSync('EMP003', 10),
+    role: 'GURU',
+    commission: 'Komisi III (Sains & IPTEK)',
+    qrValue: 'EMP003|3f1b49e27c1a8d56b02a6c2bc4a0dfef17b8f36159ad9e1bb9356ce0839e1ffba',
+    isActive: true,
+    mustChangePassword: true
+  }
+];
+
 let memoryCalendar: CalendarEvent[] = [...INITIAL_CALENDAR];
 let memoryAttendance: AttendanceRecord[] = [...INITIAL_ATTENDANCE];
 let memoryCorrections: AttendanceCorrection[] = [...INITIAL_CORRECTIONS];
 let memoryAudits: AuditLog[] = [...INITIAL_AUDITS];
+let memoryTeachers: Teacher[] = [...INITIAL_TEACHERS];
 
 // DB Fetch interfaces supporting transparent fallback
 export async function dbGetCalendar(): Promise<CalendarEvent[]> {
@@ -306,6 +381,105 @@ export async function dbGetAuditLogs(): Promise<AuditLog[]> {
     }
   }
   return memoryAudits.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+}
+
+// ==========================================
+// STAS GURU (TEACHER) PERSISTENCE ENGINES
+// ==========================================
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    operationType,
+    path
+  };
+  console.error('STAS Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+export async function dbGetTeachers(): Promise<Teacher[]> {
+  if (isRealFirebaseConnected) {
+    const path = 'teachers';
+    try {
+      const q = collection(db, path);
+      const snap = await getDocs(q);
+      const list: Teacher[] = [];
+      snap.forEach((doc) => {
+        list.push(doc.data() as Teacher);
+      });
+      if (list.length > 0) return list;
+    } catch (e) {
+      handleFirestoreError(e, OperationType.GET, path);
+    }
+  }
+  return memoryTeachers;
+}
+
+export async function dbCreateTeacher(teacher: Teacher): Promise<void> {
+  // Update local memory fallback
+  if (!memoryTeachers.some(t => t.id === teacher.id)) {
+    memoryTeachers.push(teacher);
+  }
+  if (isRealFirebaseConnected) {
+    const path = `teachers/${teacher.id}`;
+    try {
+      await setDoc(doc(db, 'teachers', teacher.id), teacher);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, path);
+    }
+  }
+}
+
+export async function dbUpdateTeacher(id: string, fields: Partial<Teacher>): Promise<void> {
+  // Update local memory fallback
+  memoryTeachers = memoryTeachers.map(t => t.id === id ? { ...t, ...fields } as Teacher : t);
+  if (isRealFirebaseConnected) {
+    const path = `teachers/${id}`;
+    try {
+      await setDoc(doc(db, 'teachers', id), fields, { merge: true });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, path);
+    }
+  }
+}
+
+export async function dbDeleteTeacher(id: string): Promise<void> {
+  // Update local memory fallback
+  memoryTeachers = memoryTeachers.filter(t => t.id !== id);
+  if (isRealFirebaseConnected) {
+    const path = `teachers/${id}`;
+    try {
+      await deleteDoc(doc(db, 'teachers', id));
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, path);
+    }
+  }
+}
+
+export async function dbResetTeacherPassword(id: string): Promise<string> {
+  const defaultHash = bcrypt.hashSync(id, 10);
+  const fields = { passwordHash: defaultHash, mustChangePassword: true };
+
+  // Update local memory fallback
+  memoryTeachers = memoryTeachers.map(t => t.id === id ? { ...t, ...fields } as Teacher : t);
+  if (isRealFirebaseConnected) {
+    const path = `teachers/${id}`;
+    try {
+      await setDoc(doc(db, 'teachers', id), fields, { merge: true });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, path);
+    }
+  }
+  return id;
 }
 
 export { isRealFirebaseConnected };

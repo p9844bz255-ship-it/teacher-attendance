@@ -32,275 +32,21 @@ __export(server_exports, {
   generateQRValue: () => generateQRValue
 });
 module.exports = __toCommonJS(server_exports);
-var import_dotenv = __toESM(require("dotenv"), 1);
 var import_express = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
 var import_crypto = __toESM(require("crypto"), 1);
 var import_jsonwebtoken = __toESM(require("jsonwebtoken"), 1);
-var import_bcryptjs2 = __toESM(require("bcryptjs"), 1);
+var import_bcryptjs3 = __toESM(require("bcryptjs"), 1);
 var import_vite = require("vite");
 
 // server/sheets.ts
-var import_bcryptjs = __toESM(require("bcryptjs"), 1);
-var SPREADSHEET_ID = "1QoSyFJDpXt9Hw4miiN3lEtuzCH3Y2NmpPt43gsGW6e0";
-var INITIAL_TEACHERS = [
-  {
-    id: "admin",
-    name: "Super Admin STAS",
-    passwordHash: import_bcryptjs.default.hashSync("lessonplan", 10),
-    role: "SUPER_ADMIN",
-    commission: "Management",
-    qrValue: "admin|SYSTEM_ADMIN_QR_SECRET_MD5",
-    isActive: true,
-    mustChangePassword: false
-  },
-  {
-    id: "SUPER001",
-    name: "Super Admin STAS Legacy",
-    passwordHash: import_bcryptjs.default.hashSync("SUPER001", 10),
-    role: "SUPER_ADMIN",
-    commission: "Direktorat Akademi",
-    qrValue: "SUPER001|SYSTEM_ADMIN_QR_SECRET_MD5",
-    isActive: true,
-    mustChangePassword: true
-  },
-  {
-    id: "ADM001",
-    name: "Admin Al-Wildan BSD",
-    passwordHash: import_bcryptjs.default.hashSync("ADM001", 10),
-    role: "ADMIN",
-    commission: "Humas & Kesiswaan",
-    qrValue: "ADM001|SYSTEM_WRITER_QR_SECRET_MD5",
-    isActive: true,
-    mustChangePassword: true
-  },
-  {
-    id: "KEP001",
-    name: "H. Abdul Hakim, Lc., M.A.",
-    passwordHash: import_bcryptjs.default.hashSync("KEP001", 10),
-    role: "KEPALA_SEKOLAH",
-    commission: "Kepala Sekolah",
-    qrValue: "KEP001|KEPALA_SEKOLAH_QR_SECRET",
-    isActive: true,
-    mustChangePassword: true
-  },
-  {
-    id: "EMP001",
-    name: "Ust. Ahmad Fauzi, S.Pd.I",
-    passwordHash: import_bcryptjs.default.hashSync("EMP001", 10),
-    role: "GURU",
-    commission: "Komisi I (Al Qur'an & Hadits)",
-    qrValue: "EMP001|7f4c28b4d8d17b8f36118d3d661413159ad9e1bb9356ce0839e1ffba4be4ecbc",
-    isActive: true,
-    mustChangePassword: true
-  },
-  {
-    id: "EMP002",
-    name: "Ustd. Sarah Amelia, S.S.",
-    passwordHash: import_bcryptjs.default.hashSync("EMP002", 10),
-    role: "GURU",
-    commission: "Komisi II (Bahasa Arab & Inggris)",
-    qrValue: "EMP002|5d3a21b876a3e6f7902d1f1bc2dca0ef17b8f36159ad9e1bb9356ce0839e1ffba",
-    isActive: true,
-    mustChangePassword: true
-  },
-  {
-    id: "EMP003",
-    name: "Ust. Ridwan Hakim, M.Pd.",
-    passwordHash: import_bcryptjs.default.hashSync("EMP003", 10),
-    role: "GURU",
-    commission: "Komisi III (Sains & IPTEK)",
-    qrValue: "EMP003|3f1b49e27c1a8d56b02a6c2bc4a0dfef17b8f36159ad9e1bb9356ce0839e1ffba",
-    isActive: true,
-    mustChangePassword: true
-  }
-];
-var cachedTeachers = [...INITIAL_TEACHERS];
-function parseCSV(csvText) {
-  const lines = [];
-  let row = [];
-  let inQuotes = false;
-  let currentValue = "";
-  for (let i = 0; i < csvText.length; i++) {
-    const char = csvText[i];
-    const nextChar = csvText[i + 1];
-    if (char === '"') {
-      if (inQuotes && nextChar === '"') {
-        currentValue += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === "," && !inQuotes) {
-      row.push(currentValue.trim());
-      currentValue = "";
-    } else if ((char === "\r" || char === "\n") && !inQuotes) {
-      if (char === "\r" && nextChar === "\n") {
-        i++;
-      }
-      row.push(currentValue.trim());
-      if (row.length > 0 && !(row.length === 1 && row[0] === "")) {
-        lines.push(row);
-      }
-      row = [];
-      currentValue = "";
-    } else {
-      currentValue += char;
-    }
-  }
-  if (currentValue || row.length > 0) {
-    row.push(currentValue.trim());
-    lines.push(row);
-  }
-  return lines;
-}
-async function syncTeacherListFromSheets() {
-  try {
-    let rawRows = [];
-    let sourceSuccess = false;
-    if (process.env.GOOGLE_API_KEY) {
-      try {
-        const url = `https://sheets.googleapis.com/v1/spreadsheets/${SPREADSHEET_ID}/values/Sheet1!A2:E200?key=${process.env.GOOGLE_API_KEY}`;
-        const res = await fetch(url);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.values && data.values.length > 0) {
-            rawRows = data.values;
-            sourceSuccess = true;
-          }
-        }
-      } catch (err) {
-        console.warn("STAS: Google Sheets API fetch failed, trying CSV export format fallback.", err);
-      }
-    }
-    if (!sourceSuccess) {
-      try {
-        const csvUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&sheet=Sheet1`;
-        const res = await fetch(csvUrl);
-        if (res.ok) {
-          const text = await res.text();
-          const parsed = parseCSV(text);
-          if (parsed.length > 1) {
-            rawRows = parsed.slice(1);
-            sourceSuccess = true;
-          }
-        }
-      } catch (err) {
-        console.warn("STAS: Google Sheets CSV export fetch failed.", err);
-      }
-    }
-    if (sourceSuccess && rawRows.length > 0) {
-      const fetchedTeachers = rawRows.filter((row) => row[1] && row[1].trim() !== "").map((row) => {
-        const name = row[0] ? row[0].trim() : "Unknown";
-        const id = row[1].trim();
-        const rawPw = row[2] ? row[2].trim() : "";
-        const rawRoleOrCommission = row[3] ? row[3].trim() : "GURU";
-        const qrVal = row[4] ? row[4].trim() : `${id}|AUTOGENERATED_SHA_HASH`;
-        let passwordHash = "";
-        const cleanPw = rawPw || id;
-        if (cleanPw.startsWith("$2a$") || cleanPw.startsWith("$2b$") || cleanPw.startsWith("$2y$")) {
-          passwordHash = cleanPw;
-        } else {
-          passwordHash = import_bcryptjs.default.hashSync(cleanPw, 10);
-        }
-        let role = "GURU";
-        const upperRoleOrCommission = rawRoleOrCommission.toUpperCase();
-        const upperId = id.toUpperCase();
-        if (upperRoleOrCommission.includes("SUPER_ADMIN") || upperRoleOrCommission.includes("SUPER ADMIN") || upperId.includes("SUPER")) {
-          role = "SUPER_ADMIN";
-        } else if (upperRoleOrCommission.includes("ADMIN") || upperId.includes("ADM")) {
-          role = "ADMIN";
-        } else if (upperRoleOrCommission.includes("KEPALA_SEKOLAH") || upperRoleOrCommission.includes("KEPALA SEKOLAH") || upperRoleOrCommission.includes("KEP") || upperId.includes("KEP")) {
-          role = "KEPALA_SEKOLAH";
-        }
-        return {
-          id,
-          name,
-          passwordHash,
-          role,
-          commission: rawRoleOrCommission,
-          qrValue: qrVal,
-          isActive: true,
-          mustChangePassword: !rawPw || rawPw === id
-          // Force password change if default/empty
-        };
-      });
-      if (fetchedTeachers.length > 0) {
-        cachedTeachers = fetchedTeachers;
-        console.log(`Teachers loaded from Google Sheets: ${fetchedTeachers.length}`);
-        return cachedTeachers;
-      }
-    }
-  } catch (error) {
-    console.error("STAS Sheets Sync Error:", error);
-  }
-  cachedTeachers = [...INITIAL_TEACHERS];
-  console.log("Fallback to INITIAL_TEACHERS");
-  return cachedTeachers;
-}
-async function appendAttendanceToSheets(record) {
-  const payload = [
-    record.timestamp,
-    record.teacherName,
-    record.teacherId,
-    record.role === "GURU" ? record.role : `${record.role} (${record.role})`,
-    // Matches report layouts
-    record.latitude,
-    record.longitude,
-    record.distance.toFixed(1),
-    record.status,
-    record.deviceInfo,
-    record.checkType,
-    record.attendanceMode
-  ];
-  console.log(`STAS Sheet Sync Engine: Logging check event to stdout:`, payload);
-  try {
-    if (process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS || process.env.GOOGLE_OAUTH_TOKEN) {
-      const token = process.env.GOOGLE_OAUTH_TOKEN;
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Sheet2!A:K:append?valueInputOption=USER_ENTERED`;
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          values: [payload]
-        })
-      });
-      if (response.ok) {
-        console.log(`STAS Sheets Sync: Successfully synced record for ID ${record.teacherId} to Sheet2.`);
-        return true;
-      } else {
-        console.warn(`STAS Sheets Sync Warning: Sheet2 append server returned status ${response.status}`);
-      }
-    }
-  } catch (error) {
-    console.error(`STAS Sheets Sync Error: Failed to sync record for ID ${record.teacherId} to Google Sheet. Storing in Firestore instead.`, error);
-  }
-  return false;
-}
-function getCachedTeachers() {
-  return cachedTeachers;
-}
-function addTeacherToCache(teacher) {
-  if (!cachedTeachers.some((t) => t.id === teacher.id)) {
-    cachedTeachers.push(teacher);
-  }
-}
-function updateTeacherInCache(id, fields) {
-  cachedTeachers = cachedTeachers.map((t) => t.id === id ? { ...t, ...fields } : t);
-}
-function resetTeacherPasswordInCache(id) {
-  const defaultHash = import_bcryptjs.default.hashSync(id, 10);
-  cachedTeachers = cachedTeachers.map((t) => t.id === id ? { ...t, passwordHash: defaultHash, mustChangePassword: true } : t);
-  return id;
-}
+var import_bcryptjs2 = __toESM(require("bcryptjs"), 1);
 
 // server/firebase.ts
 var import_app = require("firebase/app");
 var import_firestore = require("firebase/firestore");
 var import_auth = require("firebase/auth");
+var import_bcryptjs = __toESM(require("bcryptjs"), 1);
 var firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || process.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -470,10 +216,83 @@ var INITIAL_AUDITS = [
     ipAddress: "127.0.0.1"
   }
 ];
+var INITIAL_TEACHERS = [
+  {
+    id: "admin",
+    name: "Super Admin STAS",
+    passwordHash: import_bcryptjs.default.hashSync("lessonplan", 10),
+    role: "SUPER_ADMIN",
+    commission: "Management",
+    qrValue: "admin|SYSTEM_ADMIN_QR_SECRET_MD5",
+    isActive: true,
+    mustChangePassword: false
+  },
+  {
+    id: "SUPER001",
+    name: "Super Admin STAS Legacy",
+    passwordHash: import_bcryptjs.default.hashSync("SUPER001", 10),
+    role: "SUPER_ADMIN",
+    commission: "Direktorat Akademi",
+    qrValue: "SUPER001|SYSTEM_ADMIN_QR_SECRET_MD5",
+    isActive: true,
+    mustChangePassword: true
+  },
+  {
+    id: "ADM001",
+    name: "Admin Al-Wildan BSD",
+    passwordHash: import_bcryptjs.default.hashSync("ADM001", 10),
+    role: "ADMIN",
+    commission: "Humas & Kesiswaan",
+    qrValue: "ADM001|SYSTEM_WRITER_QR_SECRET_MD5",
+    isActive: true,
+    mustChangePassword: true
+  },
+  {
+    id: "KEP001",
+    name: "H. Abdul Hakim, Lc., M.A.",
+    passwordHash: import_bcryptjs.default.hashSync("KEP001", 10),
+    role: "KEPALA_SEKOLAH",
+    commission: "Kepala Sekolah",
+    qrValue: "KEP001|KEPALA_SEKOLAH_QR_SECRET",
+    isActive: true,
+    mustChangePassword: true
+  },
+  {
+    id: "EMP001",
+    name: "Ust. Ahmad Fauzi, S.Pd.I",
+    passwordHash: import_bcryptjs.default.hashSync("EMP001", 10),
+    role: "GURU",
+    commission: "Komisi I (Al Qur'an & Hadits)",
+    qrValue: "EMP001|7f4c28b4d8d17b8f36118d3d661413159ad9e1bb9356ce0839e1ffba4be4ecbc",
+    isActive: true,
+    mustChangePassword: true
+  },
+  {
+    id: "EMP002",
+    name: "Ustd. Sarah Amelia, S.S.",
+    passwordHash: import_bcryptjs.default.hashSync("EMP002", 10),
+    role: "GURU",
+    commission: "Komisi II (Bahasa Arab & Inggris)",
+    qrValue: "EMP002|5d3a21b876a3e6f7902d1f1bc2dca0ef17b8f36159ad9e1bb9356ce0839e1ffba",
+    isActive: true,
+    mustChangePassword: true
+  },
+  {
+    id: "EMP003",
+    name: "Ust. Ridwan Hakim, M.Pd.",
+    passwordHash: import_bcryptjs.default.hashSync("EMP003", 10),
+    role: "GURU",
+    commission: "Komisi III (Sains & IPTEK)",
+    qrValue: "EMP003|3f1b49e27c1a8d56b02a6c2bc4a0dfef17b8f36159ad9e1bb9356ce0839e1ffba",
+    isActive: true,
+    mustChangePassword: true
+  }
+];
 var memoryCalendar = [...INITIAL_CALENDAR];
 var memoryAttendance = [...INITIAL_ATTENDANCE];
 var memoryCorrections = [...INITIAL_CORRECTIONS];
 var memoryAudits = [...INITIAL_AUDITS];
+var memoryTeachers = [...INITIAL_TEACHERS];
 async function dbGetCalendar() {
   if (isRealFirebaseConnected) {
     try {
@@ -578,7 +397,368 @@ async function dbGetAuditLogs() {
   }
   return memoryAudits.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
+function handleFirestoreError(error, operationType, path2) {
+  const errInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    operationType,
+    path: path2
+  };
+  console.error("STAS Firestore Error: ", JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+async function dbGetTeachers() {
+  if (isRealFirebaseConnected) {
+    const path2 = "teachers";
+    try {
+      const q = (0, import_firestore.collection)(db, path2);
+      const snap = await (0, import_firestore.getDocs)(q);
+      const list = [];
+      snap.forEach((doc2) => {
+        list.push(doc2.data());
+      });
+      if (list.length > 0) return list;
+    } catch (e) {
+      handleFirestoreError(e, "get" /* GET */, path2);
+    }
+  }
+  return memoryTeachers;
+}
+async function dbCreateTeacher(teacher) {
+  if (!memoryTeachers.some((t) => t.id === teacher.id)) {
+    memoryTeachers.push(teacher);
+  }
+  if (isRealFirebaseConnected) {
+    const path2 = `teachers/${teacher.id}`;
+    try {
+      await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, "teachers", teacher.id), teacher);
+    } catch (e) {
+      handleFirestoreError(e, "write" /* WRITE */, path2);
+    }
+  }
+}
+async function dbUpdateTeacher(id, fields) {
+  memoryTeachers = memoryTeachers.map((t) => t.id === id ? { ...t, ...fields } : t);
+  if (isRealFirebaseConnected) {
+    const path2 = `teachers/${id}`;
+    try {
+      await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, "teachers", id), fields, { merge: true });
+    } catch (e) {
+      handleFirestoreError(e, "update" /* UPDATE */, path2);
+    }
+  }
+}
+async function dbDeleteTeacher(id) {
+  memoryTeachers = memoryTeachers.filter((t) => t.id !== id);
+  if (isRealFirebaseConnected) {
+    const path2 = `teachers/${id}`;
+    try {
+      await (0, import_firestore.deleteDoc)((0, import_firestore.doc)(db, "teachers", id));
+    } catch (e) {
+      handleFirestoreError(e, "delete" /* DELETE */, path2);
+    }
+  }
+}
+async function dbResetTeacherPassword(id) {
+  const defaultHash = import_bcryptjs.default.hashSync(id, 10);
+  const fields = { passwordHash: defaultHash, mustChangePassword: true };
+  memoryTeachers = memoryTeachers.map((t) => t.id === id ? { ...t, ...fields } : t);
+  if (isRealFirebaseConnected) {
+    const path2 = `teachers/${id}`;
+    try {
+      await (0, import_firestore.setDoc)((0, import_firestore.doc)(db, "teachers", id), fields, { merge: true });
+    } catch (e) {
+      handleFirestoreError(e, "update" /* UPDATE */, path2);
+    }
+  }
+  return id;
+}
 var clientFirebaseConfig = firebaseConfig;
+
+// server/sheets.ts
+var SPREADSHEET_ID = "1QoSyFJDpXt9Hw4miiN3lEtuzCH3Y2NmpPt43gsGW6e0";
+var INITIAL_TEACHERS2 = [
+  {
+    id: "admin",
+    name: "Super Admin STAS",
+    passwordHash: import_bcryptjs2.default.hashSync("lessonplan", 10),
+    role: "SUPER_ADMIN",
+    commission: "Management",
+    qrValue: "admin|SYSTEM_ADMIN_QR_SECRET_MD5",
+    isActive: true,
+    mustChangePassword: false
+  },
+  {
+    id: "SUPER001",
+    name: "Super Admin STAS Legacy",
+    passwordHash: import_bcryptjs2.default.hashSync("SUPER001", 10),
+    role: "SUPER_ADMIN",
+    commission: "Direktorat Akademi",
+    qrValue: "SUPER001|SYSTEM_ADMIN_QR_SECRET_MD5",
+    isActive: true,
+    mustChangePassword: true
+  },
+  {
+    id: "ADM001",
+    name: "Admin Al-Wildan BSD",
+    passwordHash: import_bcryptjs2.default.hashSync("ADM001", 10),
+    role: "ADMIN",
+    commission: "Humas & Kesiswaan",
+    qrValue: "ADM001|SYSTEM_WRITER_QR_SECRET_MD5",
+    isActive: true,
+    mustChangePassword: true
+  },
+  {
+    id: "KEP001",
+    name: "H. Abdul Hakim, Lc., M.A.",
+    passwordHash: import_bcryptjs2.default.hashSync("KEP001", 10),
+    role: "KEPALA_SEKOLAH",
+    commission: "Kepala Sekolah",
+    qrValue: "KEP001|KEPALA_SEKOLAH_QR_SECRET",
+    isActive: true,
+    mustChangePassword: true
+  },
+  {
+    id: "EMP001",
+    name: "Ust. Ahmad Fauzi, S.Pd.I",
+    passwordHash: import_bcryptjs2.default.hashSync("EMP001", 10),
+    role: "GURU",
+    commission: "Komisi I (Al Qur'an & Hadits)",
+    qrValue: "EMP001|7f4c28b4d8d17b8f36118d3d661413159ad9e1bb9356ce0839e1ffba4be4ecbc",
+    isActive: true,
+    mustChangePassword: true
+  },
+  {
+    id: "EMP002",
+    name: "Ustd. Sarah Amelia, S.S.",
+    passwordHash: import_bcryptjs2.default.hashSync("EMP002", 10),
+    role: "GURU",
+    commission: "Komisi II (Bahasa Arab & Inggris)",
+    qrValue: "EMP002|5d3a21b876a3e6f7902d1f1bc2dca0ef17b8f36159ad9e1bb9356ce0839e1ffba",
+    isActive: true,
+    mustChangePassword: true
+  },
+  {
+    id: "EMP003",
+    name: "Ust. Ridwan Hakim, M.Pd.",
+    passwordHash: import_bcryptjs2.default.hashSync("EMP003", 10),
+    role: "GURU",
+    commission: "Komisi III (Sains & IPTEK)",
+    qrValue: "EMP003|3f1b49e27c1a8d56b02a6c2bc4a0dfef17b8f36159ad9e1bb9356ce0839e1ffba",
+    isActive: true,
+    mustChangePassword: true
+  }
+];
+var cachedTeachers = [...INITIAL_TEACHERS2];
+function parseCSV(csvText) {
+  const lines = [];
+  let row = [];
+  let inQuotes = false;
+  let currentValue = "";
+  for (let i = 0; i < csvText.length; i++) {
+    const char = csvText[i];
+    const nextChar = csvText[i + 1];
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        currentValue += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      row.push(currentValue.trim());
+      currentValue = "";
+    } else if ((char === "\r" || char === "\n") && !inQuotes) {
+      if (char === "\r" && nextChar === "\n") {
+        i++;
+      }
+      row.push(currentValue.trim());
+      if (row.length > 0 && !(row.length === 1 && row[0] === "")) {
+        lines.push(row);
+      }
+      row = [];
+      currentValue = "";
+    } else {
+      currentValue += char;
+    }
+  }
+  if (currentValue || row.length > 0) {
+    row.push(currentValue.trim());
+    lines.push(row);
+  }
+  return lines;
+}
+async function syncTeacherListFromSheets() {
+  try {
+    let rawRows = [];
+    let sourceSuccess = false;
+    if (process.env.GOOGLE_API_KEY) {
+      try {
+        const url = `https://sheets.googleapis.com/v1/spreadsheets/${SPREADSHEET_ID}/values/Sheet1!A2:E200?key=${process.env.GOOGLE_API_KEY}`;
+        const res = await fetch(url);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.values && data.values.length > 0) {
+            rawRows = data.values;
+            sourceSuccess = true;
+          }
+        }
+      } catch (err) {
+        console.warn("STAS: Google Sheets API fetch failed, trying CSV export format fallback.", err);
+      }
+    }
+    if (!sourceSuccess) {
+      try {
+        const csvUrl = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/export?format=csv&sheet=Sheet1`;
+        const res = await fetch(csvUrl);
+        if (res.ok) {
+          const text = await res.text();
+          const parsed = parseCSV(text);
+          if (parsed.length > 1) {
+            rawRows = parsed.slice(1);
+            sourceSuccess = true;
+          }
+        }
+      } catch (err) {
+        console.warn("STAS: Google Sheets CSV export fetch failed.", err);
+      }
+    }
+    if (sourceSuccess && rawRows.length > 0) {
+      const fetchedTeachers = rawRows.filter((row) => row[1] && row[1].trim() !== "").map((row) => {
+        const name = row[0] ? row[0].trim() : "Unknown";
+        const id = row[1].trim();
+        const rawPw = row[2] ? row[2].trim() : "";
+        const rawRoleOrCommission = row[3] ? row[3].trim() : "GURU";
+        const qrVal = row[4] ? row[4].trim() : `${id}|AUTOGENERATED_SHA_HASH`;
+        let passwordHash = "";
+        const cleanPw = rawPw || id;
+        if (cleanPw.startsWith("$2a$") || cleanPw.startsWith("$2b$") || cleanPw.startsWith("$2y$")) {
+          passwordHash = cleanPw;
+        } else {
+          passwordHash = import_bcryptjs2.default.hashSync(cleanPw, 10);
+        }
+        let role = "GURU";
+        const upperRoleOrCommission = rawRoleOrCommission.toUpperCase();
+        const upperId = id.toUpperCase();
+        if (upperRoleOrCommission.includes("SUPER_ADMIN") || upperRoleOrCommission.includes("SUPER ADMIN") || upperId.includes("SUPER")) {
+          role = "SUPER_ADMIN";
+        } else if (upperRoleOrCommission.includes("ADMIN") || upperId.includes("ADM")) {
+          role = "ADMIN";
+        } else if (upperRoleOrCommission.includes("KEPALA_SEKOLAH") || upperRoleOrCommission.includes("KEPALA SEKOLAH") || upperRoleOrCommission.includes("KEP") || upperId.includes("KEP")) {
+          role = "KEPALA_SEKOLAH";
+        }
+        return {
+          id,
+          name,
+          passwordHash,
+          role,
+          commission: rawRoleOrCommission,
+          qrValue: qrVal,
+          isActive: true,
+          mustChangePassword: !rawPw || rawPw === id
+          // Force password change if default/empty
+        };
+      });
+      if (fetchedTeachers.length > 0) {
+        cachedTeachers = fetchedTeachers;
+        console.log(`Teachers loaded from Google Sheets: ${fetchedTeachers.length}`);
+        return cachedTeachers;
+      }
+    }
+  } catch (error) {
+    console.error("STAS Sheets Sync Error:", error);
+  }
+  cachedTeachers = [...INITIAL_TEACHERS2];
+  console.log("Fallback to INITIAL_TEACHERS");
+  return cachedTeachers;
+}
+async function appendAttendanceToSheets(record) {
+  const payload = [
+    record.timestamp,
+    record.teacherName,
+    record.teacherId,
+    record.role === "GURU" ? record.role : `${record.role} (${record.role})`,
+    // Matches report layouts
+    record.latitude,
+    record.longitude,
+    record.distance.toFixed(1),
+    record.status,
+    record.deviceInfo,
+    record.checkType,
+    record.attendanceMode
+  ];
+  console.log(`STAS Sheet Sync Engine: Logging check event to stdout:`, payload);
+  try {
+    if (process.env.GOOGLE_SERVICE_ACCOUNT_CREDENTIALS || process.env.GOOGLE_OAUTH_TOKEN) {
+      const token = process.env.GOOGLE_OAUTH_TOKEN;
+      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/Sheet2!A:K:append?valueInputOption=USER_ENTERED`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          values: [payload]
+        })
+      });
+      if (response.ok) {
+        console.log(`STAS Sheets Sync: Successfully synced record for ID ${record.teacherId} to Sheet2.`);
+        return true;
+      } else {
+        console.warn(`STAS Sheets Sync Warning: Sheet2 append server returned status ${response.status}`);
+      }
+    }
+  } catch (error) {
+    console.error(`STAS Sheets Sync Error: Failed to sync record for ID ${record.teacherId} to Google Sheet. Storing in Firestore instead.`, error);
+  }
+  return false;
+}
+function getCachedTeachers() {
+  return cachedTeachers;
+}
+function addTeacherToCache(teacher) {
+  if (!cachedTeachers.some((t) => t.id === teacher.id)) {
+    cachedTeachers.push(teacher);
+  }
+}
+function removeTeacherFromCache(id) {
+  cachedTeachers = cachedTeachers.filter((t) => t.id !== id);
+}
+function updateTeacherInCache(id, fields) {
+  cachedTeachers = cachedTeachers.map((t) => t.id === id ? { ...t, ...fields } : t);
+}
+function resetTeacherPasswordInCache(id) {
+  const defaultHash = import_bcryptjs2.default.hashSync(id, 10);
+  cachedTeachers = cachedTeachers.map((t) => t.id === id ? { ...t, passwordHash: defaultHash, mustChangePassword: true } : t);
+  return id;
+}
+async function syncTeacherListFromFirestore() {
+  try {
+    const fsTeachers = await dbGetTeachers();
+    if (isRealFirebaseConnected && fsTeachers && fsTeachers.length > 0) {
+      cachedTeachers = fsTeachers;
+      console.log(`STAS sync: Loaded ${fsTeachers.length} teachers from real Firestore Database.`);
+      return cachedTeachers;
+    }
+    console.log("STAS sync: Firestore empty or disconnected. Pulling fresh master list from Google Sheets...");
+    const sheetsTeachers = await syncTeacherListFromSheets();
+    if (isRealFirebaseConnected && sheetsTeachers && sheetsTeachers.length > 0) {
+      cachedTeachers = sheetsTeachers;
+      try {
+        console.log("STAS sync: Seeding Firestore with Google Sheets teacher list...");
+        for (const t of sheetsTeachers) {
+          await dbCreateTeacher(t);
+        }
+      } catch (err) {
+        console.error("STAS sync: Seeding Firestore failed:", err);
+      }
+    }
+    return cachedTeachers;
+  } catch (error) {
+    console.error("STAS: syncTeacherListFromFirestore completely failed, falling back to cachedTeachers:", error);
+    return cachedTeachers;
+  }
+}
 
 // server/calendar.ts
 var MONTH_MAP = {
@@ -725,11 +905,6 @@ async function generateExecutiveAIInsight(metrics) {
 }
 
 // server.ts
-import_dotenv.default.config({
-  path: ".env.local"
-});
-console.log("JWT:", process.env.JWT_SECRET ? "FOUND" : "MISSING");
-console.log("FIREBASE:", process.env.NEXT_PUBLIC_FIREBASE_API_KEY ? "FOUND" : "MISSING");
 var app2 = (0, import_express.default)();
 var PORT = Number(process.env.PORT) || 3e3;
 var JWT_SECRET = process.env.JWT_SECRET || "STAS_AL_WILDAN_SUPER_SECRET_KEY";
@@ -765,7 +940,7 @@ var verifyToken = (req, res, next) => {
     return res.status(401).json({ error: "Sesi kehadiran kadaluarsa. Silakan masuk kembali." });
   }
 };
-syncTeacherListFromSheets();
+syncTeacherListFromFirestore();
 app2.get("/api/config", (req, res) => {
   res.json({
     schoolLocation: {
@@ -787,10 +962,24 @@ app2.post("/api/auth/login", async (req, res) => {
     const teachers = getCachedTeachers();
     const teacher = teachers.find((t) => t.id.toLowerCase() === id.toLowerCase().trim() && t.isActive);
     if (!teacher) {
+      await dbAddAuditLog({
+        userId: id.trim(),
+        action: "LOGIN_FAILURE",
+        description: `Percobaan masuk gagal: ID "${id}" tidak terdaftar atau dinonaktifkan.`,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        ipAddress: getClientIp(req)
+      });
       return res.status(401).json({ error: "ID Guru tidak terdaftar atau dinonaktifkan." });
     }
-    const isMatch = import_bcryptjs2.default.compareSync(password, teacher.passwordHash);
+    const isMatch = import_bcryptjs3.default.compareSync(password, teacher.passwordHash);
     if (!isMatch) {
+      await dbAddAuditLog({
+        userId: teacher.id,
+        action: "LOGIN_FAILURE",
+        description: `Percobaan masuk gagal untuk ${teacher.name} (${teacher.id}): Sandi salah.`,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        ipAddress: getClientIp(req)
+      });
       return res.status(401).json({ error: "Sandi salah. Silakan coba kembali." });
     }
     const isFirstLogin = password === teacher.id;
@@ -833,7 +1022,8 @@ app2.post("/api/auth/change-password", verifyToken, async (req, res) => {
     return res.status(400).json({ error: "Sandi baru minimal berukuran 4 karakter." });
   }
   try {
-    const hashed = import_bcryptjs2.default.hashSync(newPassword, 10);
+    const hashed = import_bcryptjs3.default.hashSync(newPassword, 10);
+    await dbUpdateTeacher(req.user.id, { passwordHash: hashed, mustChangePassword: false });
     updateTeacherInCache(req.user.id, { passwordHash: hashed, mustChangePassword: false });
     await dbAddAuditLog({
       userId: req.user.id,
@@ -882,7 +1072,7 @@ app2.post("/api/teachers", verifyToken, async (req, res) => {
   }
   try {
     const defaultPassword = id;
-    const defaultHash = import_bcryptjs2.default.hashSync(defaultPassword, 10);
+    const defaultHash = import_bcryptjs3.default.hashSync(defaultPassword, 10);
     const qrVal = generateQRValue(id);
     const newTeacher = {
       id: id.trim(),
@@ -894,6 +1084,7 @@ app2.post("/api/teachers", verifyToken, async (req, res) => {
       isActive: true,
       mustChangePassword: true
     };
+    await dbCreateTeacher(newTeacher);
     addTeacherToCache(newTeacher);
     await dbAddAuditLog({
       userId: req.user.id,
@@ -913,15 +1104,48 @@ app2.put("/api/teachers/:id", verifyToken, async (req, res) => {
   }
   const { name, commission, role, isActive } = req.body;
   try {
-    updateTeacherInCache(req.params.id, { name, commission, role, isActive });
+    const id = req.params.id;
+    const teachersList = getCachedTeachers();
+    const existingTeacher = teachersList.find((t) => t.id === id);
+    let actionStr = "CRUD_UPDATE";
+    let descStr = `Super Admin memperbarui guru ID ${id}`;
+    if (existingTeacher && isActive !== void 0 && existingTeacher.isActive !== isActive) {
+      actionStr = isActive ? "TEACHER_ACTIVATE" : "TEACHER_DEACTIVATE";
+      descStr = `Super Admin ${isActive ? "mengaktifkan" : "menonaktifkan"} guru: ${existingTeacher.name} (${id})`;
+    }
+    await dbUpdateTeacher(id, { name, commission, role, isActive });
+    updateTeacherInCache(id, { name, commission, role, isActive });
     await dbAddAuditLog({
       userId: req.user.id,
-      action: "CRUD_UPDATE",
-      description: `Super Admin memperbarui guru ID ${req.params.id}`,
+      action: actionStr,
+      description: descStr,
       timestamp: (/* @__PURE__ */ new Date()).toISOString(),
       ipAddress: getClientIp(req)
     });
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+app2.delete("/api/teachers/:id", verifyToken, async (req, res) => {
+  if (req.user.role !== "SUPER_ADMIN") {
+    return res.status(403).json({ error: "Hak cipta CRUD hanya dimiliki oleh Super Admin." });
+  }
+  try {
+    const id = req.params.id;
+    const teachersList = getCachedTeachers();
+    const existingTeacher = teachersList.find((t) => t.id === id);
+    const teacherName = existingTeacher ? existingTeacher.name : id;
+    await dbDeleteTeacher(id);
+    removeTeacherFromCache(id);
+    await dbAddAuditLog({
+      userId: req.user.id,
+      action: "CRUD_DELETE",
+      description: `Super Admin menghapus guru: ${teacherName} (${id})`,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      ipAddress: getClientIp(req)
+    });
+    res.json({ success: true, message: "Teacher deleted successfully." });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -931,11 +1155,13 @@ app2.post("/api/teachers/:id/reset-password", verifyToken, async (req, res) => {
     return res.status(403).json({ error: "Hak cipta Reset Sandi hanya dimiliki oleh Super Admin." });
   }
   try {
-    resetTeacherPasswordInCache(req.params.id);
+    const id = req.params.id;
+    await dbResetTeacherPassword(id);
+    resetTeacherPasswordInCache(id);
     await dbAddAuditLog({
       userId: req.user.id,
       action: "RESET_PASSWORD",
-      description: `Melakukan reset sandi untuk Guru ID ${req.params.id}. Kembali ke kata sandi awal (ID Guru).`,
+      description: `Melakukan reset sandi untuk Guru ID ${id}. Kembali ke kata sandi awal (ID Guru).`,
       timestamp: (/* @__PURE__ */ new Date()).toISOString(),
       ipAddress: getClientIp(req)
     });
