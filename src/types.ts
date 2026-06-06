@@ -7,6 +7,7 @@ export interface Teacher {
   qrValue: string; // EMP001|SHA256_HASH
   isActive: boolean;
   mustChangePassword?: boolean;
+  _docId?: string; // Optional Firestore document ID
 }
 
 export interface AttendanceRecord {

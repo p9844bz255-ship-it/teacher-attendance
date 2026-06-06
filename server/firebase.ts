@@ -408,7 +408,13 @@ export async function dbGetTeachers(): Promise<Teacher[]> {
       const snap = await getDocs(q);
       const list: Teacher[] = [];
       snap.forEach((doc) => {
-        list.push(doc.data() as Teacher);
+        const data = doc.data() as any;
+        const teacher = {
+          ...data,
+          id: data.id || doc.id,
+          _docId: doc.id
+        } as Teacher;
+        list.push(teacher);
       });
       if (list.length > 0) return list;
     } catch (e) {
@@ -416,6 +422,22 @@ export async function dbGetTeachers(): Promise<Teacher[]> {
     }
   }
   return memoryTeachers;
+}
+
+// Internal helper to search Firestore doc ID for a given ID Guru
+async function resolveDocId(id: string): Promise<string> {
+  if (isRealFirebaseConnected) {
+    try {
+      const teachers = await dbGetTeachers();
+      const found = teachers.find(t => t.id.toLowerCase().trim() === id.toLowerCase().trim() || (t._docId && t._docId.toLowerCase().trim() === id.toLowerCase().trim()));
+      if (found && found._docId) {
+        return found._docId;
+      }
+    } catch (e) {
+      console.error('STAS Firebase Engine: Error resolving document ID:', e);
+    }
+  }
+  return id;
 }
 
 export async function dbCreateTeacher(teacher: Teacher): Promise<void> {
@@ -438,8 +460,9 @@ export async function dbUpdateTeacher(id: string, fields: Partial<Teacher>): Pro
   memoryTeachers = memoryTeachers.map(t => t.id === id ? { ...t, ...fields } as Teacher : t);
   if (isRealFirebaseConnected) {
     try {
-      await setDoc(doc(db, 'master_guru', id), fields, { merge: true });
-      console.log("UPDATED IN FIRESTORE:", id);
+      const docId = await resolveDocId(id);
+      await setDoc(doc(db, 'master_guru', docId), fields, { merge: true });
+      console.log("UPDATED IN FIRESTORE DOCUMENT:", docId);
     } catch (e) {
       console.error('STAS Firebase Engine: Error updating teacher in Firestore:', e);
     }
@@ -451,8 +474,9 @@ export async function dbDeleteTeacher(id: string): Promise<void> {
   memoryTeachers = memoryTeachers.filter(t => t.id !== id);
   if (isRealFirebaseConnected) {
     try {
-      await deleteDoc(doc(db, 'master_guru', id));
-      console.log("DELETED FROM FIRESTORE:", id);
+      const docId = await resolveDocId(id);
+      await deleteDoc(doc(db, 'master_guru', docId));
+      console.log("DELETED FROM FIRESTORE DOCUMENT:", docId);
     } catch (e) {
       console.error('STAS Firebase Engine: Error deleting teacher from Firestore:', e);
     }
@@ -467,8 +491,9 @@ export async function dbResetTeacherPassword(id: string): Promise<string> {
   memoryTeachers = memoryTeachers.map(t => t.id === id ? { ...t, ...fields } as Teacher : t);
   if (isRealFirebaseConnected) {
     try {
-      await setDoc(doc(db, 'master_guru', id), fields, { merge: true });
-      console.log("PASSWORD RESET IN FIRESTORE:", id);
+      const docId = await resolveDocId(id);
+      await setDoc(doc(db, 'master_guru', docId), fields, { merge: true });
+      console.log("PASSWORD RESET IN FIRESTORE DOCUMENT:", docId);
     } catch (e) {
       console.error('STAS Firebase Engine: Error resetting password in Firestore:', e);
     }

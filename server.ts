@@ -6,9 +6,7 @@ import bcrypt from 'bcryptjs';
 import { createServer as createViteServer } from 'vite';
 
 import {
-  syncTeacherListFromSheets,
   syncTeacherListFromFirestore,
-  getCachedTeachers,
   updateCachedTeachers,
   addTeacherToCache,
   removeTeacherFromCache,
@@ -26,6 +24,7 @@ import {
   dbUpdateCorrection,
   dbAddAuditLog,
   dbGetAuditLogs,
+  dbGetTeachers,
   dbCreateTeacher,
   dbUpdateTeacher,
   dbDeleteTeacher,
@@ -88,7 +87,9 @@ const verifyToken = (req: any, res: express.Response, next: express.NextFunction
 };
 
 // Seed teachers on startup from Firestore / Sheets fallback
-syncTeacherListFromFirestore();
+syncTeacherListFromFirestore().then((teachers) => {
+  console.log("MASTER_GURU COUNT:", teachers.length);
+});
 
 // ==========================================
 // API ENDPOINTS
@@ -115,13 +116,14 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   try {
-    // Reload from master_guru in Firestore if cache is empty
-    let teachers = getCachedTeachers();
-    if (!teachers || teachers.length === 0) {
-      await syncTeacherListFromFirestore();
-      teachers = getCachedTeachers();
-    }
-    const teacher = teachers.find((t) => t.id.toLowerCase() === id.toLowerCase().trim() && t.isActive);
+    console.log("LOGIN USING FIRESTORE");
+    const teachers = await dbGetTeachers();
+
+    const teacher = teachers.find((t) => t && t.id && typeof t.id === 'string' && t.id.toLowerCase() === id.toLowerCase().trim() && t.isActive);
+
+    console.log("LOGIN INPUT:", id);
+    console.log("AVAILABLE IDS:", teachers.map(t => t.id));
+    console.log("FOUND TEACHER:", teacher);
 
     if (!teacher) {
       await dbAddAuditLog({
@@ -134,15 +136,25 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'ID Guru tidak terdaftar atau dinonaktifkan.' });
     }
 
+    if (!teacher.passwordHash) {
+      console.error(`LOGIN ERROR: Teacher "${teacher.id}" exists but lacks passwordHash!`);
+      await dbAddAuditLog({
+        userId: teacher.id,
+        action: 'LOGIN_FAILURE',
+        description: `Percobaan masuk gagal untuk ${teacher.name} (${teacher.id}): Sandi belum di-set di Firestore.`,
+        timestamp: new Date().toISOString(),
+        ipAddress: getClientIp(req)
+      });
+      return res.status(401).json({ error: 'Sandi belum dikonfigurasi untuk akun ini. Silakan hubungi admin sekolah.' });
+    }
+
     let isMatch = bcrypt.compareSync(password, teacher.passwordHash);
     if (!isMatch) {
       // Case-insensitive/trim fallback check (important for default ID-based passwords like T2026/tugas)
       isMatch = bcrypt.compareSync(password.toLowerCase().trim(), teacher.passwordHash);
     }
 
-    console.log("LOGIN USER:", teacher.id);
-    console.log("PASSWORD INPUT:", password);
-    console.log("PASSWORD HASH:", teacher.passwordHash);
+    console.log("LOGIN USER SUCCESS MATCH:", teacher.id);
     console.log("BCRYPT RESULT:", isMatch);
 
     if (!isMatch) {
@@ -220,28 +232,37 @@ app.post('/api/auth/change-password', verifyToken, async (req: any, res) => {
   }
 });
 
-app.get('/api/auth/me', verifyToken, (req: any, res) => {
-  const teachers = getCachedTeachers();
-  const teacher = teachers.find(t => t.id === req.user.id);
-  if (!teacher) {
-    return res.status(404).json({ error: 'Teacher profile not found.' });
+app.get('/api/auth/me', verifyToken, async (req: any, res) => {
+  try {
+    const teachers = await dbGetTeachers();
+    const teacher = teachers.find(t => t.id === req.user.id);
+    if (!teacher) {
+      return res.status(404).json({ error: 'Profil pengajar tidak ditemukan.' });
+    }
+    res.json({
+      id: teacher.id,
+      name: teacher.name,
+      role: teacher.role,
+      commission: teacher.commission,
+      mustChangePassword: teacher.mustChangePassword,
+      qrValue: teacher.qrValue
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
-  res.json({
-    id: teacher.id,
-    name: teacher.name,
-    role: teacher.role,
-    commission: teacher.commission,
-    mustChangePassword: teacher.mustChangePassword,
-    qrValue: teacher.qrValue
-  });
 });
 
 // Admin Teacher CRUD
-app.get('/api/teachers', verifyToken, (req: any, res) => {
+app.get('/api/teachers', verifyToken, async (req: any, res) => {
   if (req.user.role !== 'ADMIN' && req.user.role !== 'SUPER_ADMIN') {
     return res.status(403).json({ error: 'Akses terbatas untuk administrator saja.' });
   }
-  res.json(getCachedTeachers());
+  try {
+    const teachers = await dbGetTeachers();
+    res.json(teachers);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.post('/api/teachers', verifyToken, async (req: any, res) => {
@@ -254,12 +275,12 @@ app.post('/api/teachers', verifyToken, async (req: any, res) => {
     return res.status(400).json({ error: 'Formulir guru baru belum lengkap.' });
   }
 
-  const teachers = getCachedTeachers();
-  if (teachers.some(t => t.id.toLowerCase() === id.toLowerCase().trim())) {
-    return res.status(400).json({ error: 'ID Guru sudah terdaftar di sistem.' });
-  }
-
   try {
+    const teachers = await dbGetTeachers();
+    if (teachers.some(t => t.id.toLowerCase() === id.toLowerCase().trim())) {
+      return res.status(400).json({ error: 'ID Guru sudah terdaftar di sistem.' });
+    }
+
     const defaultPassword = id.toLowerCase().trim(); // Default password = Employee ID (lowercase)
     const defaultHash = bcrypt.hashSync(defaultPassword, 10);
     const qrVal = generateQRValue(id);
@@ -306,7 +327,7 @@ app.put('/api/teachers/:id', verifyToken, async (req: any, res) => {
   const { name, commission, role, isActive } = req.body;
   try {
     const id = req.params.id;
-    const teachersList = getCachedTeachers();
+    const teachersList = await dbGetTeachers();
     const existingTeacher = teachersList.find(t => t.id === id);
 
     let actionStr = 'CRUD_UPDATE';
@@ -345,7 +366,7 @@ app.delete('/api/teachers/:id', verifyToken, async (req: any, res) => {
 
   try {
     const id = req.params.id;
-    const teachersList = getCachedTeachers();
+    const teachersList = await dbGetTeachers();
     const existingTeacher = teachersList.find(t => t.id === id);
     const teacherName = existingTeacher ? existingTeacher.name : id;
 
@@ -654,7 +675,7 @@ app.post('/api/attendance/corrections/:id/approve', verifyToken, async (req: any
 // Admin Dashboard Summary Engine
 app.get('/api/dashboard/summary', async (req, res) => {
   try {
-    const teachers = getCachedTeachers();
+    const teachers = await dbGetTeachers();
     const totalTeachers = teachers.filter(t => t.role === 'GURU').length;
 
     const attendances = await dbGetAttendance();

@@ -327,83 +327,44 @@ export function resetTeacherPasswordInCache(id: string): string {
 
 export async function syncTeacherListFromFirestore(): Promise<Teacher[]> {
   try {
-    console.log('STAS Sync: Initiating Google Sheets & Firestore hybrid synchronization...');
+    console.log('STAS Sync: Loading entire teacher registry from master_guru in Firestore...');
     
     // 1. Fetch persistent state from Firestore (master_guru)
     const fsTeachers = await dbGetTeachers();
     
-    // If real Firebase is connected and has Master Guru records, use them as absolute Single Source of Truth!
-    if (isRealFirebaseConnected && fsTeachers && fsTeachers.length > 0) {
-      console.log(`STAS Sync: Firestore master_guru holds ${fsTeachers.length} teachers. Using as Single Source of Truth.`);
-      cachedTeachers = fsTeachers;
-      updateMemoryTeachers(fsTeachers);
-      return cachedTeachers;
-    }
-    
-    // 2. Otherwise (offline or database is empty), load sheets/fallback to initialize
-    console.log('STAS Sync: Firestore master_guru is empty or offline. Initializing from Google Sheets or hardcoded defaults...');
+    // 2. Fetch Google Sheets for initial import / old data migration checking
+    console.log('STAS Sync: Fetching Google Sheets for migration & initial import...');
     const sheetsTeachers = await syncTeacherListFromSheets();
     
-    // 3. Merge sources (overlay whatever is found in fsTeachers on top of sheets)
-    const mergedMap = new Map<string, Teacher>();
-    
-    // First, populate with Google Sheets master teachers
     if (sheetsTeachers && sheetsTeachers.length > 0) {
-      for (const t of sheetsTeachers) {
-        mergedMap.set(t.id.toLowerCase().trim(), t);
-      }
-    }
-    
-    // Second, merge on top with Firestore records (overwriting matching IDs or keeping CRUD teachers)
-    if (fsTeachers && fsTeachers.length > 0) {
-      for (const ft of fsTeachers) {
-        const key = ft.id.toLowerCase().trim();
-        const existing = mergedMap.get(key);
-        if (existing) {
-          mergedMap.set(key, {
-            ...existing,
-            ...ft
-          });
-        } else {
-          mergedMap.set(key, ft);
-        }
-      }
-    }
-    
-    const finalTeachers = Array.from(mergedMap.values());
-    
-    // 4. Update the active memory cache
-    if (finalTeachers.length > 0) {
-      cachedTeachers = finalTeachers;
-      updateMemoryTeachers(finalTeachers);
-      console.log(`STAS Sync: Successfully merged sources. Active teacher registry contains ${cachedTeachers.length} entries.`);
+      const fsTeacherIds = new Set((fsTeachers || []).map(t => t.id.toLowerCase().trim()));
+      let newlyMigratedCount = 0;
       
-      // 5. Seed newly discovered Google Sheets teachers to Firestore so everything stays persistently in sync
-      if (isRealFirebaseConnected) {
-        try {
-          const fsTeacherIds = new Set((fsTeachers || []).map(t => t.id.toLowerCase().trim()));
-          let newlySeededCount = 0;
-          for (const t of finalTeachers) {
-            const cleanId = t.id.toLowerCase().trim();
-            if (!fsTeacherIds.has(cleanId)) {
-              // This is a new teacher from sheets not yet in Firestore! Persist it.
-              await dbCreateTeacher(t);
-              newlySeededCount++;
-            }
+      for (const t of sheetsTeachers) {
+        const cleanId = t.id.toLowerCase().trim();
+        if (!fsTeacherIds.has(cleanId)) {
+          // This teacher exists in Google Sheets but is not yet in Firestore. Save it to Firestore!
+          if (isRealFirebaseConnected) {
+            await dbCreateTeacher(t);
           }
-          if (newlySeededCount > 0) {
-            console.log(`STAS Sync: Seeded ${newlySeededCount} newly discovered Google Sheets teachers to Firestore.`);
-          }
-        } catch (seedErr) {
-          console.error('STAS Sync: Seeding newly discovered teachers failed:', seedErr);
+          fsTeachers.push(t);
+          newlyMigratedCount++;
         }
+      }
+      if (newlyMigratedCount > 0) {
+        console.log(`STAS Sync: Successfully migrated ${newlyMigratedCount} teachers from Google Sheets to Firestore master_guru.`);
       }
     }
     
+    cachedTeachers = fsTeachers;
+    updateMemoryTeachers(fsTeachers);
     return cachedTeachers;
   } catch (error) {
-    console.error('STAS Sync: syncTeacherListFromFirestore completely failed, falling back to cachedTeachers:', error);
-    updateMemoryTeachers(cachedTeachers);
+    console.error('STAS Sync: syncTeacherListFromFirestore completely failed:', error);
+    // Fallback: reload what we have
+    const fsTeachers = await dbGetTeachers();
+    cachedTeachers = fsTeachers;
+    updateMemoryTeachers(fsTeachers);
     return cachedTeachers;
   }
 }
