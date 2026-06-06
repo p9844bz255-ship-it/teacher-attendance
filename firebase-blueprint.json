@@ -1,0 +1,87 @@
+{
+  "entities": {
+    "Attendance": {
+      "title": "Attendance",
+      "description": "Stores realtime teacher check-in and check-out records.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "role": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "distance": { "type": "number" },
+        "attendanceMode": { "type": "string" },
+        "checkType": { "type": "string", "enum": ["CHECK_IN", "CHECK_OUT"] },
+        "status": { "type": "string", "enum": ["HADIR", "TERLAMBAT", "PULANG_CEPAT"] },
+        "deviceInfo": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "teacherId", "teacherName", "timestamp", "latitude", "longitude", "checkType", "status"]
+    },
+    "AttendanceCorrection": {
+      "title": "AttendanceCorrection",
+      "description": "Stores requests from teachers to correct attendance records.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "teacherId": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "correctionDate": { "type": "string" },
+        "type": { "type": "string", "enum": ["LUPA_CHECKIN", "LUPA_CHECKOUT", "GPS_ERROR", "QR_ERROR"] },
+        "reason": { "type": "string" },
+        "attachment": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"] },
+        "approvedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "teacherId", "teacherName", "correctionDate", "type", "reason", "status", "createdAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Stores logs of system activities for security compliance.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "action": { "type": "string" },
+        "description": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "ipAddress": { "type": "string" }
+      },
+      "required": ["userId", "action", "description", "timestamp"]
+    },
+    "KalenderPendidikan": {
+      "title": "KalenderPendidikan",
+      "description": "Stores school events and holidays to automate system status.",
+      "type": "object",
+      "properties": {
+        "bulan": { "type": "string" },
+        "kegiatan": { "type": "string" },
+        "kegiatan_lower": { "type": "string" },
+        "tanggal": { "type": "string" },
+        "tanggal_full": { "type": "string" }
+      },
+      "required": ["bulan", "kegiatan", "kegiatan_lower", "tanggal", "tanggal_full"]
+    }
+  },
+  "firestore": {
+    "attendance": {
+      "schema": "Attendance",
+      "description": "Realtime teacher attendance collection"
+    },
+    "attendance_corrections": {
+      "schema": "AttendanceCorrection",
+      "description": "Teacher attendance correction approval requests"
+    },
+    "audit_logs": {
+      "schema": "AuditLog",
+      "description": "Security compliance and transaction log trail"
+    },
+    "kalender_pendidikan": {
+      "schema": "KalenderPendidikan",
+      "description": "Existing academic school calendar and operations rules configuration"
+    }
+  }
+}

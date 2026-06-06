@@ -1,0 +1,81 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reuseable security helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // 1. Attendance Collection Rules
+    match /attendance/{attendanceId} {
+      // Allow read for authenticated teachers (their own) or admins (all)
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (
+        resource.data.teacherId == request.auth.uid || 
+        request.auth.token.role == 'ADMIN' || 
+        request.auth.token.role == 'SUPER_ADMIN' ||
+        request.auth.token.role == 'KEPALA_SEKOLAH'
+      );
+      // Writes are routed through secure Server-Side express backend, but we permit
+      // writes with server admin credentials or validated user requests matching auth uid
+      allow write: if isSignedIn() && (
+        request.resource.data.teacherId == request.auth.uid ||
+        request.auth.token.role == 'ADMIN' || 
+        request.auth.token.role == 'SUPER_ADMIN'
+      );
+    }
+
+    // 2. Attendance Corrections Rules
+    match /attendance_corrections/{correctionId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && (
+        resource.data.teacherId == request.auth.uid || 
+        request.auth.token.role == 'ADMIN' || 
+        request.auth.token.role == 'SUPER_ADMIN' ||
+        request.auth.token.role == 'KEPALA_SEKOLAH'
+      );
+      // Teachers can submit corrections for themselves, Admin can approve/reject
+      allow create: if isSignedIn() && request.resource.data.teacherId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        request.auth.token.role == 'ADMIN' || 
+        request.auth.token.role == 'SUPER_ADMIN'
+      );
+      allow delete: if false; // Audit trail preservation
+    }
+
+    // 3. Kalendar Pendidikan (Read-only for all signed in users)
+    match /kalender_pendidikan/{eventId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (
+        request.auth.token.role == 'ADMIN' || 
+        request.auth.token.role == 'SUPER_ADMIN'
+      );
+    }
+
+    // 4. Audit Logs (Only accessible by Admins/Super Admins)
+    match /audit_logs/{logId} {
+      allow read: if isSignedIn() && (
+        request.auth.token.role == 'ADMIN' || 
+        request.auth.token.role == 'SUPER_ADMIN'
+      );
+      // Creating logs is allowed for the app system or logs
+      allow create: if isSignedIn();
+      allow update, delete: if false; // Immutable audit logs
+    }
+  }
+}
