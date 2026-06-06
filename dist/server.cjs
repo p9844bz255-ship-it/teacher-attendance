@@ -731,7 +731,7 @@ import_dotenv.default.config({
 console.log("JWT:", process.env.JWT_SECRET ? "FOUND" : "MISSING");
 console.log("FIREBASE:", process.env.NEXT_PUBLIC_FIREBASE_API_KEY ? "FOUND" : "MISSING");
 var app2 = (0, import_express.default)();
-var PORT = 3e3;
+var PORT = Number(process.env.PORT) || 3e3;
 var JWT_SECRET = process.env.JWT_SECRET || "STAS_AL_WILDAN_SUPER_SECRET_KEY";
 var QR_SIGN_KEY = "STAS_QR_BSD_SIGN_KEY";
 app2.use(import_express.default.json({ limit: "10mb" }));
