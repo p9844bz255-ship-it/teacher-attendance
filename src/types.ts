@@ -8,6 +8,10 @@ export interface Teacher {
   isActive: boolean;
   mustChangePassword?: boolean;
   _docId?: string; // Optional Firestore document ID
+  currentQrToken?: string;
+  qrIssuedAt?: string;
+  qrExpiredAt?: string;
+  createdAt?: string;
 }
 
 export interface AttendanceRecord {
@@ -48,6 +52,7 @@ export interface CalendarEvent {
 }
 
 export interface AuditLog {
+  id?: string | number;
   userId: string;
   action: string;
   description: string;

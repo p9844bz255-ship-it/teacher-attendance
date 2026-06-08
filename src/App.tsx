@@ -50,7 +50,19 @@ export default function App() {
     setSessionError(null);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (token) {
+      try {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+      } catch (e) {
+        console.error('Logout error clearing server QR state:', e);
+      }
+    }
     localStorage.removeItem('stas_token');
     setToken(null);
     setUser(null);

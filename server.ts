@@ -6,7 +6,7 @@ import bcrypt from 'bcryptjs';
 import { createServer as createViteServer } from 'vite';
 
 import {
-  syncTeacherListFromFirestore,
+  syncTeacherListFromSupabase,
   updateCachedTeachers,
   addTeacherToCache,
   removeTeacherFromCache,
@@ -29,9 +29,10 @@ import {
   dbUpdateTeacher,
   dbDeleteTeacher,
   dbResetTeacherPassword,
-  clientFirebaseConfig,
-  isRealFirebaseConnected
-} from './server/firebase';
+  clientSupabaseConfig,
+  isSupabaseConnected,
+  supabase
+} from './server/supabase';
 
 import { evaluateSchoolStatus } from './server/calendar';
 import { generateExecutiveAIInsight } from './server/gemini';
@@ -86,8 +87,8 @@ const verifyToken = (req: any, res: express.Response, next: express.NextFunction
   }
 };
 
-// Seed teachers on startup from Firestore / Sheets fallback
-syncTeacherListFromFirestore().then((teachers) => {
+// Seed teachers on startup from Supabase / Sheets fallback
+syncTeacherListFromSupabase().then((teachers) => {
   console.log("MASTER_GURU COUNT:", teachers.length);
 });
 
@@ -103,8 +104,8 @@ app.get('/api/config', (req, res) => {
       longitude: 106.6947,
       radius: 50 // 50 Meters geofence
     },
-    firebaseConfig: clientFirebaseConfig,
-    isRealDb: isRealFirebaseConnected
+    supabaseConfig: clientSupabaseConfig,
+    isRealDb: isSupabaseConnected
   });
 });
 
@@ -141,7 +142,7 @@ app.post('/api/auth/login', async (req, res) => {
       await dbAddAuditLog({
         userId: teacher.id,
         action: 'LOGIN_FAILURE',
-        description: `Percobaan masuk gagal untuk ${teacher.name} (${teacher.id}): Sandi belum di-set di Firestore.`,
+        description: `Percobaan masuk gagal untuk ${teacher.name} (${teacher.id}): Sandi belum di-set di Supabase.`,
         timestamp: new Date().toISOString(),
         ipAddress: getClientIp(req)
       });
@@ -183,10 +184,44 @@ app.post('/api/auth/login', async (req, res) => {
       { expiresIn: '30d' }
     );
 
+    // Dynamic QR Token (Enterprise) - 4 hours expiry
+    const nowSecs = Math.floor(Date.now() / 1000);
+    const expiresSecs = nowSecs + 4 * 60 * 60; // 4 Hours
+    const qrPayload = {
+      teacherId: teacher.id,
+      teacherName: teacher.name,
+      role: teacher.role,
+      issuedAt: nowSecs,
+      expiresAt: expiresSecs
+    };
+    const qrToken = jwt.sign(qrPayload, JWT_SECRET);
+    const qrIssuedAtStr = new Date(nowSecs * 1000).toISOString();
+    const qrExpiredAtStr = new Date(expiresSecs * 1000).toISOString();
+
+    // Update in database and in-memory cache
+    await dbUpdateTeacher(teacher.id, {
+      currentQrToken: qrToken,
+      qrIssuedAt: qrIssuedAtStr,
+      qrExpiredAt: qrExpiredAtStr
+    });
+    updateTeacherInCache(teacher.id, {
+      currentQrToken: qrToken,
+      qrIssuedAt: qrIssuedAtStr,
+      qrExpiredAt: qrExpiredAtStr
+    });
+
     await dbAddAuditLog({
       userId: teacher.id,
       action: 'LOGIN',
       description: `${teacher.name} (${teacher.role}) berhasil masuk ke sistem STAS.`,
+      timestamp: new Date().toISOString(),
+      ipAddress: getClientIp(req)
+    });
+
+    await dbAddAuditLog({
+      userId: teacher.id,
+      action: 'QR_GENERATED',
+      description: `Token QR Dinamis baru di-generate untuk ${teacher.name} (${teacher.id}) berlaku selama 4 jam.`,
       timestamp: new Date().toISOString(),
       ipAddress: getClientIp(req)
     });
@@ -199,7 +234,10 @@ app.post('/api/auth/login', async (req, res) => {
         role: teacher.role,
         commission: teacher.commission,
         mustChangePassword: teacher.mustChangePassword || isFirstLogin,
-        qrValue: teacher.qrValue
+        qrValue: teacher.qrValue,
+        currentQrToken: qrToken,
+        qrIssuedAt: qrIssuedAtStr,
+        qrExpiredAt: qrExpiredAtStr
       }
     });
   } catch (err: any) {
@@ -239,16 +277,101 @@ app.get('/api/auth/me', verifyToken, async (req: any, res) => {
     if (!teacher) {
       return res.status(404).json({ error: 'Profil pengajar tidak ditemukan.' });
     }
+
+    // Fallback: If they have a valid session but no token or if their existing token has expired
+    let qrToken = teacher.currentQrToken;
+    let qrIssuedAtStr = teacher.qrIssuedAt;
+    let qrExpiredAtStr = teacher.qrExpiredAt;
+
+    const currentSecs = Math.floor(Date.now() / 1000);
+    let needsNewToken = !qrToken;
+
+    if (qrToken) {
+      try {
+        const decoded: any = jwt.verify(qrToken, JWT_SECRET);
+        if (decoded.expiresAt && currentSecs > decoded.expiresAt) {
+          needsNewToken = true;
+        }
+      } catch (err) {
+        needsNewToken = true;
+      }
+    }
+
+    if (needsNewToken) {
+      const nowSecs = Math.floor(Date.now() / 1000);
+      const expiresSecs = nowSecs + 4 * 60 * 60; // 4 Hours
+      const qrPayload = {
+        teacherId: teacher.id,
+        teacherName: teacher.name,
+        role: teacher.role,
+        issuedAt: nowSecs,
+        expiresAt: expiresSecs
+      };
+      qrToken = jwt.sign(qrPayload, JWT_SECRET);
+      qrIssuedAtStr = new Date(nowSecs * 1000).toISOString();
+      qrExpiredAtStr = new Date(expiresSecs * 1000).toISOString();
+
+      await dbUpdateTeacher(teacher.id, {
+        currentQrToken: qrToken,
+        qrIssuedAt: qrIssuedAtStr,
+        qrExpiredAt: qrExpiredAtStr
+      });
+      updateTeacherInCache(teacher.id, {
+        currentQrToken: qrToken,
+        qrIssuedAt: qrIssuedAtStr,
+        qrExpiredAt: qrExpiredAtStr
+      });
+
+      await dbAddAuditLog({
+        userId: teacher.id,
+        action: 'QR_GENERATED',
+        description: `Token QR Dinamis baru di-generate otomatis via session restore untuk ${teacher.name} (${teacher.id}) berlaku selama 4 jam.`,
+        timestamp: new Date().toISOString(),
+        ipAddress: getClientIp(req)
+      });
+    }
+
     res.json({
       id: teacher.id,
       name: teacher.name,
       role: teacher.role,
       commission: teacher.commission,
       mustChangePassword: teacher.mustChangePassword,
-      qrValue: teacher.qrValue
+      qrValue: teacher.qrValue,
+      currentQrToken: qrToken,
+      qrIssuedAt: qrIssuedAtStr,
+      qrExpiredAt: qrExpiredAtStr
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/auth/logout', verifyToken, async (req: any, res) => {
+  try {
+    const teacherId = req.user.id;
+    await dbUpdateTeacher(teacherId, {
+      currentQrToken: null,
+      qrIssuedAt: null,
+      qrExpiredAt: null
+    });
+    updateTeacherInCache(teacherId, {
+      currentQrToken: null,
+      qrIssuedAt: null,
+      qrExpiredAt: null
+    });
+
+    await dbAddAuditLog({
+      userId: teacherId,
+      action: 'LOGOUT',
+      description: `Guru managed to log out. Token QR Dinamis diaktifkan sebelumnya telah dihapus dari sistem.`,
+      timestamp: new Date().toISOString(),
+      ipAddress: getClientIp(req)
+    });
+
+    res.json({ success: true, message: 'Keluar berhasil dan QR dinamis dinonaktifkan.' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -298,7 +421,7 @@ app.post('/api/teachers', verifyToken, async (req: any, res) => {
 
     console.log("NEW TEACHER CREATED:", newTeacher);
 
-    // 1. Save permanently to Firestore
+    // 1. Save permanently to Supabase
     await dbCreateTeacher(newTeacher);
 
     // 2. Update local cache
@@ -316,6 +439,145 @@ app.post('/api/teachers', verifyToken, async (req: any, res) => {
     res.json(newTeacher);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/teachers/bulk-upload', verifyToken, async (req: any, res) => {
+  if (req.user.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({ error: 'Hak cipta bulk upload hanya dimiliki oleh Super Admin.' });
+  }
+
+  const { teachers } = req.body;
+  if (!Array.isArray(teachers)) {
+    return res.status(400).json({ error: 'Data guru massal tidak valid.' });
+  }
+
+  let successCount = 0;
+  let failCount = 0;
+  const errors: string[] = [];
+
+  try {
+    const dbTeachers = await dbGetTeachers();
+    const existingIds = new Set(dbTeachers.map(t => t.id.toLowerCase().trim()));
+
+    let existingEmails = new Set<string>();
+
+    if (isSupabaseConnected && supabase) {
+      try {
+        const { data: authUsers, error: listError } = await supabase.auth.admin.listUsers({
+          perPage: 1000
+        });
+        if (!listError && authUsers?.users) {
+          authUsers.users.forEach((u: any) => {
+            if (u.email) existingEmails.add(u.email.toLowerCase().trim());
+          });
+        }
+      } catch (e) {
+        console.warn('STAS Bulk Upload Check: Could not list auth users, falling back to local memory check.', e);
+      }
+    }
+
+    const batchEmails = new Set<string>();
+    const batchIds = new Set<string>();
+
+    for (const rawTeacher of teachers) {
+      const id = String(rawTeacher.id || '').trim();
+      const name = String(rawTeacher.name || '').trim();
+      const commission = String(rawTeacher.commission || '').trim();
+      let email = String(rawTeacher.email || '').toLowerCase().trim();
+
+      // Email is optional, auto-generate default based on teacher ID if empty
+      if (!email) {
+        email = `${id.toLowerCase()}@alwildan3bsd.sch.id`;
+      }
+
+      let roleVal: 'SUPER_ADMIN' | 'ADMIN' | 'GURU' | 'KEPALA_SEKOLAH' = 'GURU';
+      const rawRole = String(rawTeacher.role || '').toUpperCase().trim();
+      if (rawRole === 'SUPER_ADMIN' || rawRole === 'ADMIN' || rawRole === 'GURU' || rawRole === 'KEPALA_SEKOLAH') {
+        roleVal = rawRole;
+      }
+
+      if (!id || !name || !commission) {
+        failCount++;
+        errors.push(`Baris "${name || 'Guru Tanpa Nama'}": Informasi tidak lengkap (ID, Nama, dan Komisi wajib diisi).`);
+        continue;
+      }
+
+      const idLower = id.toLowerCase();
+
+      if (existingIds.has(idLower) || batchIds.has(idLower)) {
+        failCount++;
+        errors.push(`ID Guru "@${id}" sudah terdaftar di sistem (Baris dilewati).`);
+        continue;
+      }
+
+      if (existingEmails.has(email) || batchEmails.has(email)) {
+        failCount++;
+        errors.push(`Email "${email}" sudah digunakan (Baris dilewati).`);
+        continue;
+      }
+
+      const defaultPassword = id.toLowerCase();
+      const defaultHash = bcrypt.hashSync(defaultPassword, 10);
+      const qrVal = generateQRValue(id);
+
+      const newTeacher: Teacher = {
+        id: id,
+        name: name,
+        passwordHash: defaultHash,
+        role: roleVal,
+        commission: `${commission} | Email: ${email}`,
+        qrValue: qrVal,
+        isActive: true,
+        mustChangePassword: true
+      };
+
+      try {
+        if (isSupabaseConnected && supabase) {
+          const { error: signUpError } = await supabase.auth.admin.createUser({
+            email: email,
+            password: id,
+            user_metadata: { name: name, id: id },
+            email_confirm: true
+          });
+          if (signUpError) {
+            console.error(`Auth signup failed for ${email}:`, signUpError);
+            failCount++;
+            errors.push(`Gagal mendaftarkan email "${email}" di Supabase Auth: ${signUpError.message}`);
+            continue;
+          }
+        }
+
+        await dbCreateTeacher(newTeacher);
+        addTeacherToCache(newTeacher);
+
+        successCount++;
+        batchEmails.add(email);
+        batchIds.add(idLower);
+
+      } catch (err: any) {
+        failCount++;
+        errors.push(`Gagal menyimpan ${name}: ${err.message}`);
+      }
+    }
+
+    await dbAddAuditLog({
+      userId: req.user.id,
+      action: 'CRUD_CREATE',
+      description: `Bulk upload berhasil mengimpor ${successCount} guru, dilewati/gagal ${failCount}.`,
+      timestamp: new Date().toISOString(),
+      ipAddress: getClientIp(req)
+    });
+
+    res.json({
+      success: true,
+      successCount,
+      failCount,
+      errors
+    });
+
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -338,7 +600,7 @@ app.put('/api/teachers/:id', verifyToken, async (req: any, res) => {
       descStr = `Super Admin ${isActive ? 'mengaktifkan' : 'menonaktifkan'} guru: ${existingTeacher.name} (${id})`;
     }
 
-    // 1. Update Firestore permanently
+    // 1. Update Supabase permanently
     await dbUpdateTeacher(id, { name, commission, role, isActive });
 
     // 2. Update cache
@@ -370,7 +632,7 @@ app.delete('/api/teachers/:id', verifyToken, async (req: any, res) => {
     const existingTeacher = teachersList.find(t => t.id === id);
     const teacherName = existingTeacher ? existingTeacher.name : id;
 
-    // 1. Delete Firestore permanently
+    // 1. Delete Supabase permanently
     await dbDeleteTeacher(id);
 
     // 2. Update cache
@@ -399,7 +661,7 @@ app.post('/api/teachers/:id/reset-password', verifyToken, async (req: any, res) 
   try {
     const id = req.params.id;
 
-    // 1. Reset password in Firestore permanently
+    // 1. Reset password in Supabase permanently
     await dbResetTeacherPassword(id);
 
     // 2. Reset in cache
@@ -481,10 +743,86 @@ app.post('/api/attendance/check', verifyToken, async (req: any, res) => {
       if (!qrValue) {
         return res.status(400).json({ error: 'Pemindaian kartu QR Sekolah wajib diselesaikan.' });
       }
-      // Level 2 Signature audit: decrypted QR value must verify
-      const expectedQR = generateQRValue(req.user.id);
-      if (qrValue !== expectedQR) {
-        return res.status(400).json({ error: 'Audit QR Gagal. Kartu QR tidak cocok atau milik pengajar lain.' });
+
+      // Verify if it is a valid JWT token
+      let qrPayload: any = null;
+      try {
+        qrPayload = jwt.verify(qrValue, JWT_SECRET);
+      } catch (jwtErr: any) {
+        let errorMsg = 'Audit QR Gagal. Token tidak valid atau rusak.';
+        let actionLog = 'QR_SCAN_REJECTED';
+        
+        if (jwtErr && jwtErr.name === 'TokenExpiredError') {
+          errorMsg = 'QR telah kedaluwarsa. Silakan login kembali.';
+          actionLog = 'QR_EXPIRED';
+        }
+
+        await dbAddAuditLog({
+          userId: req.user.id,
+          action: actionLog,
+          description: `Percobaan scan QR ditolak untuk ${req.user.name} (${req.user.id}): ${jwtErr.message || jwtErr}`,
+          timestamp: new Date().toISOString(),
+          ipAddress: getClientIp(req)
+        });
+
+        if (actionLog === 'QR_EXPIRED') {
+          await dbAddAuditLog({
+            userId: req.user.id,
+            action: 'QR_SCAN_REJECTED',
+            description: `Scan QR Gagal karena token sudah kedaluwarsa.`,
+            timestamp: new Date().toISOString(),
+            ipAddress: getClientIp(req)
+          });
+        }
+
+        return res.status(400).json({ error: errorMsg });
+      }
+
+      // Extra safety checks from payload
+      if (!qrPayload || qrPayload.teacherId !== req.user.id) {
+        await dbAddAuditLog({
+          userId: req.user.id,
+          action: 'QR_SCAN_REJECTED',
+          description: `Percobaan scan QR ditolak: ID Pengajar di QR (${qrPayload?.teacherId || 'tidak ada'}) tidak sesuai dengan pengajar aktif (${req.user.id}).`,
+          timestamp: new Date().toISOString(),
+          ipAddress: getClientIp(req)
+        });
+        return res.status(400).json({ error: 'Audit QR Gagal. Kartu QR bukan milik Anda.' });
+      }
+
+      // Check current active token rotation in database (the stored token in Supabase must match the scanned token)
+      const teachersList = await dbGetTeachers();
+      const currentTeacher = teachersList.find(t => t.id === req.user.id);
+
+      if (!currentTeacher || currentTeacher.currentQrToken !== qrValue) {
+        await dbAddAuditLog({
+          userId: req.user.id,
+          action: 'QR_SCAN_REJECTED',
+          description: `Scan QR ditolak karena token tidak lagi aktif (sudah di-rotasi atau dimatikan oleh logout).`,
+          timestamp: new Date().toISOString(),
+          ipAddress: getClientIp(req)
+        });
+        return res.status(400).json({ error: 'Audit QR Gagal. QR Code ini sudah tidak berlaku karena Anda telah melakukan login terpisah atau token telah di-reset.' });
+      }
+
+      // Check explicit expiration time in payload
+      const currentSecs = Math.floor(Date.now() / 1000);
+      if (qrPayload.expiresAt && currentSecs > qrPayload.expiresAt) {
+        await dbAddAuditLog({
+          userId: req.user.id,
+          action: 'QR_EXPIRED',
+          description: `Audit QR Gagal: Token melebihi batas waktu 4 jam.`,
+          timestamp: new Date().toISOString(),
+          ipAddress: getClientIp(req)
+        });
+        await dbAddAuditLog({
+          userId: req.user.id,
+          action: 'QR_SCAN_REJECTED',
+          description: `Scan QR Gagal karena token sudah kedaluwarsa.`,
+          timestamp: new Date().toISOString(),
+          ipAddress: getClientIp(req)
+        });
+        return res.status(400).json({ error: 'QR telah kedaluwarsa. Silakan login kembali.' });
       }
     }
 
@@ -537,9 +875,20 @@ app.post('/api/attendance/check', verifyToken, async (req: any, res) => {
       createdAt: today.toISOString()
     };
 
-    // Save to Firestore & Append directly to Sheet2!
+    // Save to Supabase & Append directly to Sheet2!
     await dbAddAttendance(newRecord);
     await appendAttendanceToSheets(newRecord);
+
+    const isQrCheck = attendanceMode === 'GPS + QR' || attendanceMode === 'QR Only' || isWFH;
+    if (isQrCheck) {
+      await dbAddAuditLog({
+        userId: req.user.id,
+        action: 'QR_SCAN_SUCCESS',
+        description: `Pemindaian QR Dinamis untuk ${req.user.name} terverifikasi sukses.`,
+        timestamp: today.toISOString(),
+        ipAddress: getClientIp(req)
+      });
+    }
 
     await dbAddAuditLog({
       userId: req.user.id,
@@ -779,7 +1128,7 @@ app.get('/api/audit-logs', verifyToken, async (req: any, res) => {
 // VITE MIDDLEWARE & STATIC SERVING
 // ==========================================
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production' && process.env.DISABLE_HMR !== 'true') {
+  if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa'

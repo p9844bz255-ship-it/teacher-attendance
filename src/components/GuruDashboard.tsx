@@ -38,6 +38,40 @@ export default function GuruDashboard({ user, token, onLogout }: GuruDashboardPr
   const [successRecord, setSuccessRecord] = useState<any>(null);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
 
+  // Enterprise Dynamic QR Countdown and Expired States
+  const [timeLeft, setTimeLeft] = useState<string>('');
+  const [isQrExpired, setIsQrExpired] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!user || !user.qrExpiredAt) {
+      setTimeLeft('');
+      setIsQrExpired(false);
+      return;
+    }
+
+    const calculateTimeLeft = () => {
+      const difference = +new Date(user.qrExpiredAt) - +new Date();
+      if (difference <= 0) {
+        setTimeLeft('00:00:00');
+        setIsQrExpired(true);
+        return;
+      }
+
+      const hoursLeft = Math.floor(difference / (1000 * 60 * 60));
+      const minutesLeft = Math.floor((difference / 1000 / 60) % 60);
+      const secondsLeft = Math.floor((difference / 1000) % 60);
+
+      const pad = (num: number) => String(num).padStart(2, '0');
+      setTimeLeft(`${pad(hoursLeft)}:${pad(minutesLeft)}:${pad(secondsLeft)}`);
+      setIsQrExpired(false);
+    };
+
+    calculateTimeLeft();
+    const timer = setInterval(calculateTimeLeft, 1000);
+
+    return () => clearInterval(timer);
+  }, [user]);
+
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
 
   // Initialize data
@@ -539,20 +573,48 @@ export default function GuruDashboard({ user, token, onLogout }: GuruDashboardPr
               >
                 <div className="mt-5 p-6 bg-black text-white rounded-[24px] flex flex-col items-center justify-center space-y-5 border border-black/[0.1] shadow-xl relative">
                   <div className="text-center space-y-1">
-                    <p className="text-[9px] uppercase tracking-wider text-gray-400 font-medium">AL-WILDAN BOARDING SCHOOL 3</p>
+                    <p className="text-[9px] uppercase tracking-wider text-gray-400 font-medium font-sans">AL-WILDAN BOARDING SCHOOL 3</p>
                     <h5 className="text-xs font-semibold text-white">Kartu Identitas Digital</h5>
                   </div>
 
                   {/* QR Image Fetch from QRServer - Black and White Pure QR */}
-                  <div className="bg-white p-4 rounded-2xl shadow-sm">
+                  <div className="bg-white p-4 rounded-2xl shadow-sm relative overflow-hidden">
                     <img 
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(user.qrValue || '')}`}
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(user.currentQrToken || user.qrValue || '')}`}
                       alt="User QR"
-                      className="h-36 w-36 object-contain block"
+                      className={`h-36 w-36 object-contain block transition-all duration-300 ${isQrExpired ? 'opacity-10 blur-[1px]' : ''}`}
                     />
+                    {isQrExpired && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/90 p-2 text-center">
+                        <span className="text-[10px] font-bold text-red-600 tracking-wider uppercase font-mono">EXPIRED</span>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="text-center space-y-1">
+                  {/* QR Badge & Real-time Countdown */}
+                  <div className="flex flex-col items-center space-y-1.5 w-full">
+                    {isQrExpired ? (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-[9px] font-bold bg-red-650 text-white shadow-sm uppercase tracking-wider font-sans">
+                        ● QR Kedaluwarsa
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-[9px] font-bold bg-emerald-500 text-white shadow-sm uppercase tracking-wider font-sans animate-pulse">
+                        ● QR Aktif
+                      </span>
+                    )}
+
+                    <div className="text-[11px] text-gray-300 font-sans tracking-wide">
+                      {isQrExpired ? (
+                        <p className="text-red-400 font-medium text-center">Masa berlaku QR habis.<br />Silakan login ulang.</p>
+                      ) : (
+                        <p className="text-center text-gray-400">
+                          Sisa waktu: <span className="text-emerald-400 font-mono font-bold text-xs">{timeLeft}</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="text-center space-y-1 pt-1 border-t border-white/10 w-full">
                     <p className="text-[10px] text-gray-400 font-mono">@{user.id}</p>
                     <h5 className="text-sm font-semibold">{user.name}</h5>
                     <span className="inline-block text-[10px] bg-white/10 text-white px-3 py-1 rounded-full font-medium">

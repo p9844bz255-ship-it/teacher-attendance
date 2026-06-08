@@ -1,6 +1,6 @@
 import { Teacher, AttendanceRecord } from '../src/types';
 import bcrypt from 'bcryptjs';
-import { dbGetTeachers, dbCreateTeacher, isRealFirebaseConnected, updateMemoryTeachers } from './firebase';
+import { dbGetTeachers, dbCreateTeacher, isSupabaseConnected, updateMemoryTeachers } from './supabase';
 
 const SPREADSHEET_ID = '1QoSyFJDpXt9Hw4miiN3lEtuzCH3Y2NmpPt43gsGW6e0';
 
@@ -33,46 +33,6 @@ const INITIAL_TEACHERS: Teacher[] = [
     role: 'ADMIN',
     commission: 'Humas & Kesiswaan',
     qrValue: 'ADM001|SYSTEM_WRITER_QR_SECRET_MD5',
-    isActive: true,
-    mustChangePassword: true
-  },
-  {
-    id: 'KEP001',
-    name: 'H. Abdul Hakim, Lc., M.A.',
-    passwordHash: bcrypt.hashSync('KEP001', 10),
-    role: 'KEPALA_SEKOLAH',
-    commission: 'Kepala Sekolah',
-    qrValue: 'KEP001|KEPALA_SEKOLAH_QR_SECRET',
-    isActive: true,
-    mustChangePassword: true
-  },
-  {
-    id: 'EMP001',
-    name: 'Ust. Ahmad Fauzi, S.Pd.I',
-    passwordHash: bcrypt.hashSync('EMP001', 10),
-    role: 'GURU',
-    commission: 'Komisi I (Al Qur\'an & Hadits)',
-    qrValue: 'EMP001|7f4c28b4d8d17b8f36118d3d661413159ad9e1bb9356ce0839e1ffba4be4ecbc',
-    isActive: true,
-    mustChangePassword: true
-  },
-  {
-    id: 'EMP002',
-    name: 'Ustd. Sarah Amelia, S.S.',
-    passwordHash: bcrypt.hashSync('EMP002', 10),
-    role: 'GURU',
-    commission: 'Komisi II (Bahasa Arab & Inggris)',
-    qrValue: 'EMP002|5d3a21b876a3e6f7902d1f1bc2dca0ef17b8f36159ad9e1bb9356ce0839e1ffba',
-    isActive: true,
-    mustChangePassword: true
-  },
-  {
-    id: 'EMP003',
-    name: 'Ust. Ridwan Hakim, M.Pd.',
-    passwordHash: bcrypt.hashSync('EMP003', 10),
-    role: 'GURU',
-    commission: 'Komisi III (Sains & IPTEK)',
-    qrValue: 'EMP003|3f1b49e27c1a8d56b02a6c2bc4a0dfef17b8f36159ad9e1bb9356ce0839e1ffba',
     isActive: true,
     mustChangePassword: true
   }
@@ -288,7 +248,7 @@ export async function appendAttendanceToSheets(record: AttendanceRecord): Promis
       }
     }
   } catch (error) {
-    console.error(`STAS Sheets Sync Error: Failed to sync record for ID ${record.teacherId} to Google Sheet. Storing in Firestore instead.`, error);
+    console.error(`STAS Sheets Sync Error: Failed to sync record for ID ${record.teacherId} to Google Sheet. Storing in Supabase instead.`, error);
   }
   return false;
 }
@@ -325,11 +285,11 @@ export function resetTeacherPasswordInCache(id: string): string {
   return id;
 }
 
-export async function syncTeacherListFromFirestore(): Promise<Teacher[]> {
+export async function syncTeacherListFromSupabase(): Promise<Teacher[]> {
   try {
-    console.log('STAS Sync: Loading entire teacher registry from master_guru in Firestore...');
+    console.log('STAS Sync: Loading entire teacher registry from master_guru in Supabase...');
     
-    // 1. Fetch persistent state from Firestore (master_guru)
+    // 1. Fetch persistent state from Supabase (master_guru)
     const fsTeachers = await dbGetTeachers();
     
     // 2. Fetch Google Sheets for initial import / old data migration checking
@@ -342,9 +302,10 @@ export async function syncTeacherListFromFirestore(): Promise<Teacher[]> {
       
       for (const t of sheetsTeachers) {
         const cleanId = t.id.toLowerCase().trim();
-        if (!fsTeacherIds.has(cleanId)) {
-          // This teacher exists in Google Sheets but is not yet in Firestore. Save it to Firestore!
-          if (isRealFirebaseConnected) {
+        // Crucial check: Only auto-migrate or seed other users if they are admin or super admin
+        if (!fsTeacherIds.has(cleanId) && (t.role === 'SUPER_ADMIN' || t.role === 'ADMIN')) {
+          // This teacher exists in Google Sheets but is not yet in Supabase. Save it to Supabase!
+          if (isSupabaseConnected) {
             await dbCreateTeacher(t);
           }
           fsTeachers.push(t);
@@ -352,7 +313,7 @@ export async function syncTeacherListFromFirestore(): Promise<Teacher[]> {
         }
       }
       if (newlyMigratedCount > 0) {
-        console.log(`STAS Sync: Successfully migrated ${newlyMigratedCount} teachers from Google Sheets to Firestore master_guru.`);
+        console.log(`STAS Sync: Successfully migrated ${newlyMigratedCount} teachers from Google Sheets to Supabase master_guru.`);
       }
     }
     
@@ -360,7 +321,7 @@ export async function syncTeacherListFromFirestore(): Promise<Teacher[]> {
     updateMemoryTeachers(fsTeachers);
     return cachedTeachers;
   } catch (error) {
-    console.error('STAS Sync: syncTeacherListFromFirestore completely failed:', error);
+    console.error('STAS Sync: syncTeacherListFromSupabase completely failed:', error);
     // Fallback: reload what we have
     const fsTeachers = await dbGetTeachers();
     cachedTeachers = fsTeachers;

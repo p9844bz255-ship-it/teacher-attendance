@@ -67,6 +67,17 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
   const [tCommission, setTCommission] = useState('');
   const [tRole, setTRole] = useState('GURU');
   const [errorLabel, setErrorLabel] = useState<string | null>(null);
+  const [teacherSearchQuery, setTeacherSearchQuery] = useState('');
+
+  // Bulk user CSV states
+  const [showImportPanel, setShowImportPanel] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    success: boolean;
+    successCount: number;
+    failCount: number;
+    errors: string[];
+  } | null>(null);
 
   // Print view state
   const [printFilter, setPrintFilter] = useState<'all' | 'single'>('all');
@@ -95,6 +106,16 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
       }
     });
   };
+
+  const filteredTeachers = teachers.filter((teacher) => {
+    if (!teacherSearchQuery) return true;
+    const q = teacherSearchQuery.toLowerCase();
+    const idMatches = String(teacher.id || '').toLowerCase().includes(q);
+    const nameMatches = String(teacher.name || '').toLowerCase().includes(q);
+    const commMatches = String(teacher.commission || '').toLowerCase().includes(q);
+    const roleMatches = String(teacher.role || '').toLowerCase().includes(q);
+    return idMatches || nameMatches || commMatches || roleMatches;
+  });
 
   useEffect(() => {
     fetchDashboardData();
@@ -145,6 +166,152 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
     } finally {
       setLoading(false);
     }
+  };
+
+  const downloadCSVTemplate = (type: 'comma' | 'semicolon') => {
+    let content = '';
+    let filename = '';
+    
+    if (type === 'semicolon') {
+      content = 'sep=;\r\nid;name;commission;role;email\r\nalwildan9;Yundi Al-Wildan;Komisi II;GURU;yundi@alwildan.sch.id\r\nalwildan10;Willy Utomo;Komisi III;ADMIN;willy@alwildan.sch.id';
+      filename = 'template_guru_excel_semicolon.csv';
+    } else {
+      content = 'sep=,\r\nid,name,commission,role,email\r\nalwildan9,Yundi Al-Wildan,Komisi II,GURU,yundi@alwildan.sch.id\r\nalwildan10,Willy Utomo,Komisi III,ADMIN,willy@alwildan.sch.id';
+      filename = 'template_guru_standard_comma.csv';
+    }
+
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + content], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleCSVUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    setImportResult(null);
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const text = e.target?.result as string;
+        if (!text) {
+          throw new Error("File kosong atau tidak terbaca.");
+        }
+
+        let lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l !== '');
+        if (lines.length > 0 && lines[0].toLowerCase().startsWith('sep=')) {
+          lines.shift();
+        }
+
+        if (lines.length < 2) {
+          throw new Error("Data CSV tidak valid (minimal memerlukan baris judul/header dan satu baris data).");
+        }
+
+        const header = lines[0].split(/[;,]/).map(col => col.trim().toLowerCase().replace(/^["']|["']$/g, ''));
+        const idIdx = header.indexOf('id');
+        const nameIdx = header.indexOf('name');
+        const commIdx = header.indexOf('commission');
+        const roleIdx = header.indexOf('role');
+        const emailIdx = header.indexOf('email');
+
+        if (idIdx === -1 || nameIdx === -1 || commIdx === -1) {
+          throw new Error("Format header CSV tidak sesuai. Pastikan memiliki setidaknya kolom (id, name, commission).");
+        }
+
+        const importedTeachers: any[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+
+          let cells: string[] = [];
+          const commaCount = (line.match(/,/g) || []).length;
+          const semiCount = (line.match(/;/g) || []).length;
+          const delimiter = semiCount > commaCount ? ';' : ',';
+
+          let insideQuote = false;
+          let currentCell = '';
+          for (let charIdx = 0; charIdx < line.length; charIdx++) {
+            const char = line[charIdx];
+            if (char === '"') {
+              insideQuote = !insideQuote;
+            } else if (char === delimiter && !insideQuote) {
+              cells.push(currentCell.trim());
+              currentCell = '';
+            } else {
+              currentCell += char;
+            }
+          }
+          cells.push(currentCell.trim());
+
+          if (cells.length < 3) continue;
+
+          const tId = cells[idIdx]?.replace(/^["']|["']$/g, '').trim();
+          const tName = cells[nameIdx]?.replace(/^["']|["']$/g, '').trim();
+          const tCommission = cells[commIdx]?.replace(/^["']|["']$/g, '').trim();
+          const tRole = roleIdx !== -1 && cells[roleIdx] ? cells[roleIdx].replace(/^["']|["']$/g, '').toUpperCase().trim() : 'GURU';
+          const tEmail = emailIdx !== -1 && cells[emailIdx] ? cells[emailIdx].replace(/^["']|["']$/g, '').trim() : '';
+
+          if (tId && tName && tCommission) {
+            importedTeachers.push({
+              id: tId,
+              name: tName,
+              commission: tCommission,
+              role: tRole,
+              email: tEmail
+            });
+          }
+        }
+
+        if (importedTeachers.length === 0) {
+          throw new Error("Tidak menemukan baris data pengajar yang valid untuk diimpor.");
+        }
+
+        const res = await fetch('/api/teachers/bulk-upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ teachers: importedTeachers })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Gagal mengunggah data massal.");
+        }
+
+        setImportResult({
+          success: true,
+          successCount: data.successCount,
+          failCount: data.failCount,
+          errors: data.errors || []
+        });
+
+        fetchDashboardData();
+
+      } catch (err: any) {
+        setImportResult({
+          success: false,
+          successCount: 0,
+          failCount: 0,
+          errors: [err.message]
+        });
+      } finally {
+        setImporting(false);
+      }
+    };
+
+    reader.readAsText(file);
+    event.target.value = '';
   };
 
   // CRUD actions
@@ -654,23 +821,180 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
                 <p className="text-xs text-gray-450 mt-0.5">Kelola kredensial pengajar akademik, setel ulang sandi, dan status status keaktifan akun.</p>
               </div>
               {user.role === 'SUPER_ADMIN' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingTeacherId(null);
-                    setTId('');
-                    setTName('');
-                    setTCommission('');
-                    setTRole('GURU');
-                    setShowTeacherForm(!showTeacherForm);
-                  }}
-                  className="text-xs bg-black text-white hover:bg-neutral-900 px-4.5 py-2.5 rounded-full flex items-center space-x-2 font-medium cursor-pointer"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>Daftarkan Guru Baru</span>
-                </button>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowImportPanel(!showImportPanel);
+                      setShowTeacherForm(false);
+                      setImportResult(null);
+                    }}
+                    className={`text-xs px-4.5 py-2.5 rounded-full flex items-center space-x-2 font-medium cursor-pointer border ${
+                      showImportPanel
+                        ? 'bg-zinc-100 text-zinc-950 border-zinc-350'
+                        : 'bg-white hover:bg-slate-50 text-slate-800 border-slate-200'
+                    }`}
+                  >
+                    <Download className="h-4 w-4 transform rotate-180 text-gray-500" />
+                    <span>Bulk Impor Guru</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingTeacherId(null);
+                      setTId('');
+                      setTName('');
+                      setTCommission('');
+                      setTRole('GURU');
+                      setShowTeacherForm(!showTeacherForm);
+                      setShowImportPanel(false);
+                      setImportResult(null);
+                    }}
+                    className={`text-xs px-4.5 py-2.5 rounded-full flex items-center space-x-2 font-medium cursor-pointer border ${
+                      showTeacherForm
+                        ? 'bg-zinc-100 text-zinc-950 border-zinc-350'
+                        : 'bg-black text-white border-black hover:bg-neutral-900'
+                    }`}
+                  >
+                    <Plus className="h-4 w-4 text-white" />
+                    <span>Daftarkan Guru Baru</span>
+                  </button>
+                </div>
               )}
             </div>
+
+            {/* CSV Import Panel Popup */}
+            <AnimatePresence>
+              {showImportPanel && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className="bg-white rounded-[28px] p-6 shadow-[0_8px_30px_rgba(0,0,0,0.03)] border border-black/[0.01]"
+                >
+                  <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
+                    <div className="flex-1 space-y-3">
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-950">
+                        Impor Data Guru Massal (CSV)
+                      </h4>
+                      <p className="text-xs text-gray-500 leading-relaxed max-w-xl">
+                        Metode migrasi bulk memungkinkan Anda menambahkan puluhan akun guru sekaligus. Sistem akan mendaftarkan akun di Supabase Auth, memproduksi hash kredensial pengajar, dan mencatatkan profil pada basis data secara otomatis.
+                      </p>
+
+                      <div className="bg-slate-50 border border-slate-150 p-4 rounded-2xl max-w-xl space-y-2">
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center space-x-1">
+                          <span>💡 Solusi Excel Kolom Tunggal (Tergabung di Kolom A)</span>
+                        </span>
+                        <p className="text-[11px] text-gray-500 leading-normal">
+                          Secara default, Microsoft Excel di Indonesia memilah data dengan tanda titik koma (<code className="bg-zinc-200/60 px-1 py-0.5 rounded text-zinc-800 font-bold font-mono">;</code>) bukan koma (<code className="bg-zinc-200/60 px-1 py-0.5 rounded text-zinc-800 font-bold font-mono">,</code>). Jika file CSV Anda tergabung di Kolom A, gunakan <strong>Template Semicolon</strong> di bawah ini agar Excel otomatis memisahkannya per-kolom (A, B, C, dst) secara rapi.
+                        </p>
+                        <div className="flex flex-wrap gap-2 pt-1 pb-1">
+                          <button
+                            type="button"
+                            onClick={() => downloadCSVTemplate('semicolon')}
+                            className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-medium px-3.5 py-1.5 rounded-xl flex items-center space-x-1.5 transition cursor-pointer shadow-sm"
+                          >
+                            <Download className="h-3.5 w-3.5 text-white" />
+                            <span>Unduh Template Excel (Semicolon)</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => downloadCSVTemplate('comma')}
+                            className="text-xs bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-medium px-3.5 py-1.5 rounded-xl flex items-center space-x-1.5 transition cursor-pointer border border-zinc-200"
+                          >
+                            <Download className="h-3.5 w-3.5 text-zinc-600" />
+                            <span>Unduh Template Biasa (Comma)</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="bg-[#F9FAFB] border border-gray-150 p-4 rounded-2xl max-w-xl">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Contoh Format Kolom CSV (id, name, commission, role, email)</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText("id,name,commission,role,email\nalwildan9,Yundi Al-Wildan,Komisi II,GURU,yundi@alwildan.sch.id\nalwildan10,Willy Utomo,Komisi III,ADMIN,willy@alwildan.sch.id");
+                              alert("Format disalin ke clipboard!");
+                            }}
+                            className="text-[10px] font-bold text-slate-800 hover:underline flex items-center space-x-1"
+                          >
+                            <span>Salin Format Contoh</span>
+                          </button>
+                        </div>
+                        <pre className="text-[11px] font-mono text-gray-600 bg-white/65 p-2 rounded border border-gray-100 overflow-x-auto leading-tight select-all">
+                          id,name,commission,role,email{"\n"}
+                          alwildan9,"Yundi Al-Wildan","Komisi II",GURU,yundi@alwildan.sch.id{"\n"}
+                          alwildan10,"Willy Utomo","Komisi III",ADMIN,willy@alwildan.sch.id
+                        </pre>
+                      </div>
+                    </div>
+
+                    <div className="w-full md:w-80 flex flex-col items-center justify-center border-2 border-dashed border-zinc-250 p-6 rounded-[22px] bg-zinc-50 hover:bg-zinc-100/50 transition relative group cursor-pointer">
+                      <input
+                        type="file"
+                        accept=".csv"
+                        disabled={importing}
+                        onChange={handleCSVUpload}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                      <div className="text-center space-y-2 pointer-events-none">
+                        <div className="h-10 w-10 rounded-full bg-white shadow-sm flex items-center justify-center mx-auto text-zinc-700 group-hover:scale-105 transition">
+                          {importing ? (
+                            <RefreshCw className="h-5 w-5 animate-spin text-zinc-650" />
+                          ) : (
+                            <Download className="h-5 w-5 transform rotate-180 text-zinc-650" />
+                          )}
+                        </div>
+                        <div className="text-xs font-semibold text-gray-950">
+                          {importing ? "Mengevaluasi & Mengunggah..." : "Pilih File CSV"}
+                        </div>
+                        <div className="text-[10px] text-gray-400">
+                          Seret & lepas berkas `.csv` di sini
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {importResult && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className={`mt-6 p-4 rounded-[20px] border ${
+                        importResult.success
+                          ? 'bg-emerald-50 text-emerald-900 border-emerald-150'
+                          : 'bg-red-50 text-red-900 border-red-150'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2.5 mb-2 font-semibold text-xs">
+                        {importResult.success ? (
+                          <>
+                            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                            <span>Impor Selesai dengan Sukses ({importResult.successCount} Berhasil, {importResult.failCount} Dilewati)</span>
+                          </>
+                        ) : (
+                          <>
+                            <ShieldAlert className="h-4 w-4 text-red-600" />
+                            <span>Impor Terhambat</span>
+                          </>
+                        )}
+                      </div>
+
+                      {importResult.errors.length > 0 && (
+                        <div className="space-y-1 max-h-40 overflow-y-auto mt-2 pl-6 pr-2 py-1 text-[11px] font-mono leading-relaxed bg-white/45 rounded-lg border border-black/[0.02]">
+                          {importResult.errors.map((err, errIdx) => (
+                            <div key={errIdx} className="text-red-750 font-mono">
+                              • {err}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Premium registration form popup */}
             <AnimatePresence>
@@ -757,6 +1081,35 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
 
             {/* List Table */}
             <div className="bg-white rounded-[32px] p-8 shadow-[0_8px_30px_rgba(0,0,0,0.04)] overflow-hidden">
+              {/* Search Bar & Result Indicators */}
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6 border-b border-gray-50 pb-5">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Cari guru berdasarkan nama, ID, komisi..."
+                    value={teacherSearchQuery}
+                    onChange={(e) => setTeacherSearchQuery(e.target.value)}
+                    className="w-full pl-11 pr-10 py-2.5 text-xs bg-zinc-50 border border-zinc-100 rounded-full focus:outline-none focus:ring-2 focus:ring-black focus:bg-white transition text-[#111111]"
+                  />
+                  {teacherSearchQuery && (
+                    <button
+                      onClick={() => setTeacherSearchQuery('')}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black text-sm font-semibold select-none cursor-pointer"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+                <div className="text-xs text-gray-400 font-medium">
+                  {teacherSearchQuery ? (
+                    <span>Menampilkan <strong className="text-gray-900">{filteredTeachers.length}</strong> dari <strong className="text-gray-900">{teachers.length}</strong> guru terdaftar</span>
+                  ) : (
+                    <span>Total guru terdaftar: <strong className="text-gray-900">{teachers.length}</strong></span>
+                  )}
+                </div>
+              </div>
+
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse text-xs">
                   <thead>
@@ -770,56 +1123,64 @@ export default function AdminDashboard({ user, token, onLogout }: AdminDashboard
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 text-gray-800">
-                    {teachers.map((teacher) => (
-                      <tr key={teacher.id} className="hover:bg-slate-50/50 transition">
-                        <td className="py-4 px-4 pl-0 font-mono text-gray-400">@{teacher.id}</td>
-                        <td className="py-4 px-4 font-semibold text-gray-900">{teacher.name}</td>
-                        <td className="py-4 px-4 text-gray-500 font-medium">{teacher.commission}</td>
-                        <td className="py-4 px-4">
-                          <span className="text-[10px] font-bold text-gray-950 uppercase bg-slate-100 px-2.5 py-0.5 rounded-full">
-                            {teacher.role}
-                          </span>
-                        </td>
-                        <td className="py-4 px-4">
-                          {teacher.mustChangePassword ? (
-                            <span className="text-red-750 bg-red-50 px-2.5 py-0.5 rounded-full text-[10px] font-semibold">
-                              Sandi Default
+                    {filteredTeachers.length > 0 ? (
+                      filteredTeachers.map((teacher) => (
+                        <tr key={teacher.id} className="hover:bg-slate-50/50 transition">
+                          <td className="py-4 px-4 pl-0 font-mono text-gray-400">@{teacher.id}</td>
+                          <td className="py-4 px-4 font-semibold text-gray-900">{teacher.name}</td>
+                          <td className="py-4 px-4 text-gray-500 font-medium">{teacher.commission}</td>
+                          <td className="py-4 px-4">
+                            <span className="text-[10px] font-bold text-gray-950 uppercase bg-slate-100 px-2.5 py-0.5 rounded-full">
+                              {teacher.role}
                             </span>
-                          ) : (
-                            <span className="text-zinc-600 bg-zinc-100 px-2.5 py-0.5 rounded-full text-[10px] font-semibold">
-                              Sudah Aktivasi
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-4 px-4 pr-0 text-right space-x-1.5 whitespace-nowrap">
-                          {user.role === 'SUPER_ADMIN' && (
-                            <>
-                              <button
-                                onClick={() => handlePasswordReset(teacher.id, teacher.name)}
-                                className="text-gray-500 hover:text-black hover:bg-slate-100 h-8 w-8 rounded-full inline-flex items-center justify-center transition"
-                                title="Reset sandi ke default"
-                              >
-                                <Key className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => handleEditClick(teacher)}
-                                className="text-gray-500 hover:text-black hover:bg-slate-100 h-8 w-8 rounded-full inline-flex items-center justify-center transition"
-                                title="Sunting Profil"
-                              >
-                                <Edit className="h-4 w-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteClick(teacher.id, teacher.name)}
-                                className="h-8 w-8 rounded-full inline-flex items-center justify-center transition-colors text-rose-600 hover:text-rose-700 hover:bg-rose-50"
-                                title="Hapus Guru"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </>
-                          )}
+                          </td>
+                          <td className="py-4 px-4">
+                            {teacher.mustChangePassword ? (
+                              <span className="text-red-750 bg-red-50 px-2.5 py-0.5 rounded-full text-[10px] font-semibold">
+                                Sandi Default
+                              </span>
+                            ) : (
+                              <span className="text-zinc-600 bg-zinc-100 px-2.5 py-0.5 rounded-full text-[10px] font-semibold">
+                                Sudah Aktivasi
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-4 px-4 pr-0 text-right space-x-1.5 whitespace-nowrap">
+                            {user.role === 'SUPER_ADMIN' && (
+                              <>
+                                <button
+                                  onClick={() => handlePasswordReset(teacher.id, teacher.name)}
+                                  className="text-gray-500 hover:text-black hover:bg-slate-100 h-8 w-8 rounded-full inline-flex items-center justify-center transition"
+                                  title="Reset sandi ke default"
+                                >
+                                  <Key className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleEditClick(teacher)}
+                                  className="text-gray-500 hover:text-black hover:bg-slate-100 h-8 w-8 rounded-full inline-flex items-center justify-center transition"
+                                  title="Sunting Profil"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteClick(teacher.id, teacher.name)}
+                                  className="h-8 w-8 rounded-full inline-flex items-center justify-center transition-colors text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                  title="Hapus Guru"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-gray-400 font-semibold text-xs uppercase tracking-wider">
+                          Guru tidak ditemukan dengan kata kunci "{teacherSearchQuery}".
                         </td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
               </div>
